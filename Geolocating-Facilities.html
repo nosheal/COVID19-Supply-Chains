@@ -375,7 +375,6 @@ summary {
 <pre><code>## New names:
 ## * `` -&gt; ...1</code></pre>
 <p>We then begin the process of geocoding. We will use <a href="https://developers.google.com/maps/documentation/geocoding/intro">Google’s geolocating service</a> to process our geolocation requests. To use this service, we need to get an <a href="https://developers.google.com/maps/documentation/geocoding/get-api-key">API key</a></p>
-<pre class="r"><code>api_key &lt;- c(&quot;AIzaSyA1pwzK3BaX7_um-_TUrS7aGfCHQvp68b8&quot;)</code></pre>
 <p>We define our function, which will take an address as an input and output a latitude and longitude result.</p>
 <pre class="r"><code>geocodeAddress &lt;- function(address) {
   require(RJSONIO)

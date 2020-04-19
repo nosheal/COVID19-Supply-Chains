@@ -30,7 +30,7 @@ us_swabs_hq <- read_xlsx("swabs_us.xlsx")
 
 We then begin the process of geocoding. We will use [Google's geolocating service](https://developers.google.com/maps/documentation/geocoding/intro) to process our geolocation requests. To use this service, we need to get an [API key](https://developers.google.com/maps/documentation/geocoding/get-api-key)
 
-```{r}
+```{r, echo = FALSE, Include = FALSE}
 api_key <- c("YOUR_API_KEY")
 ```
 
