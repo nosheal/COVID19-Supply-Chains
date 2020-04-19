@@ -1,0 +1,219 @@
+---
+title: "Geocoding"
+author: "Nikhil Kalathil"
+date: "4/19/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include = FALSE}
+#install.packages('ggmap', 'RJSONIO')
+library(tidyverse)
+library(ggmap)
+library(leaflet)
+library(leaflet.extras)
+library(htmltools)
+library(htmlwidgets)
+library(RJSONIO)
+library(readxl)
+library(widgetframe)
+```
+In this file we will define a procedure for geolocating entitites based on a csv of their addresses. 
+
+We start by loading our data. 
+```{r}
+us_swabs_hq <- read_xlsx("swabs_us.xlsx")
+```
+
+We then begin the process of geocoding. We will use [Google's geolocating service](https://developers.google.com/maps/documentation/geocoding/intro) to process our geolocation requests. To use this service, we need to get an [API key](https://developers.google.com/maps/documentation/geocoding/get-api-key)
+
+```{r}
+api_key <- c("AIzaSyA1pwzK3BaX7_um-_TUrS7aGfCHQvp68b8")
+```
+
+We define our function, which will take an address as an input and output a latitude and longitude result. 
+
+```{r}
+geocodeAddress <- function(address) {
+  require(RJSONIO)
+  url <- "https://maps.googleapis.com/maps/api/geocode/json?address="
+  url <- URLencode(paste(url, address, sep = ""))
+  url <- URLencode(paste(url, "&key=", api_key, sep = ""))
+  x <- fromJSON(url, simplify = FALSE)
+  print(x$status)
+  if (x$status == "OK") {
+    out <- c(x$results[[1]]$geometry$location$lng,
+             x$results[[1]]$geometry$location$lat,
+             x$results[[1]]$formatted_address)
+  } else {
+    out <- NA
+  }
+  Sys.sleep(0.2)  # API only allows 5 requests per second
+  out
+}
+```
+
+To get the geocode for an address, we pass the address to the function. 
+
+```{r}
+geocodeAddress("Time Square, New York City")
+```
+
+```{r}
+us_swabs_hq <- us_swabs_hq %>% 
+  mutate(address = paste(Company, Headquarters, sep = ", ")) %>% 
+  mutate(product = "Swabs", purpose = "Testing", loc_desc = "Company HQ") %>% 
+  mutate(swabs = case_when(
+    Company %in% c("Copan","Becton, Dickinson and Company (BD)", "Fisher Healthcare") ~ "Nasopharyngeal and Oropharyngeal Swabs", 
+    Company %in% c("Quidel") ~ "Nasopharyngeal Swabs", 
+    Company %in% c("Puritan Medical Products") ~ "Nasopharyngeal, Oropharyngeal, and Other Swabs"
+  )) %>% 
+  rename(employees = "Number of Employees", sales = "Annual Sales")
+```
+
+Let us test that this works with the first entry in our dataframe. 
+
+```{r}
+geocodeAddress(us_swabs_hq$address[1])
+```
+
+We can confirm that this is the approximate location through google. 
+
+```{r geolocation_check, fig.fullwidth=TRUE, echo = FALSE}
+knitr::include_graphics("geolocation checking.png")
+```
+
+Now we loop through the addresses to get the latitude and longitude of each address and add iit to the original address data frame in the  new columns lat and long. 
+
+```{r}
+origAddress <- us_swabs_hq
+```
+
+
+```{r}
+for(i in 1:nrow(origAddress))
+{
+  result <- geocodeAddress(origAddress$address[i])
+  origAddress$long[i] <- as.numeric(result[1])
+  origAddress$lat[i] <- as.numeric(result[2])
+  origAddress$form_addres[i] <- as.character(result[3])
+}
+```
+
+Save this as a new object to prepare for leaflet plotting. In doing so we want to define as identifying factors for this layer as possible. At the minimum, we want to identify the product, purpose, and level in the supply chain. 
+
+```{r}
+geocoded_us_swabs_hq <- origAddress 
+```
+
+Now, we can turn to using leaflet to plot these locations.
+
+We first define tools that will let us control the layers of our map. 
+
+```{r}
+#grouped layer control plugin
+groupedLayerControlPlugin <- htmlDependency("leaflet-groupedlayercontrol", "0.61",
+    src = c(href = "http://ismyrnow.github.io/leaflet-groupedlayercontrol/src/"),
+    script = "leaflet.groupedlayercontrol.js",
+    stylesheet = "leaflet.groupedlayercontrol.css"
+)
+
+# A function that takes a plugin htmlDependency object and adds
+# it to the map. This ensures that however or whenever the map
+# gets rendered, the plugin will be loaded into the browser.
+registerPlugin <- function(map, plugin) {
+    map$dependencies <- c(map$dependencies, list(plugin))
+    map
+}
+```
+
+Initialize the map: 
+
+```{r}
+map_data <- geocoded_us_swabs_hq
+```
+
+
+```{r}
+m <- leaflet(data = map_data) %>% 
+  # add layers of maps (decided to provide three options)
+    addTiles(group = "OSM (default)") %>%
+  addTiles(urlTemplate = "https://mts1.google.com/vt/lyrs=s&hl=en&src=app&x={x}&y={y}&z={z}&s=G", group = "Google") %>%
+    addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") %>%
+    addProviderTiles(providers$Esri.NatGeoWorldMap, group = "NatGeoWorldMap") %>% 
+  registerPlugin(groupedLayerControlPlugin) %>%
+  
+  onRender("function(el, x, data) {
+           var baseLayers = {
+           'NatGeoWorldMap': this.layerManager.getLayerGroup('NatGeoWorldMap'),
+           'Google': this.layerManager.getLayerGroup('Google'),
+            'Toner Lite (default)': this.layerManager.getLayerGroup('Toner Lite (default)')
+           };
+           
+           var groupedOverlays = {
+           'Testing': {
+           'Swabs': this.layerManager.getLayerGroup('Swabs'),
+           },
+           };
+
+          var Options = {
+            groupCheckboxes: true
+          };
+
+           console.log(L.control.groupedLayers);
+           L.control.groupedLayers(baseLayers, groupedOverlays, Options).addTo(this);
+           }", data = map_data %>% select(lat, long, purpose)) %>%
+  # set the boundary of the map so that the user cannot zoom out of one world 
+    # view of the map
+    setMaxBounds(lng1 = 210,
+                 lat1 = 89.45016124669523,
+                 lng2 = -210,
+                 lat2 = -87.71179927260242) %>%
+    
+    # add mini map on bottom right corner with collapse option
+    addMiniMap(
+        tiles = providers$Stamen.TonerLite,
+        toggleDisplay = T
+    ) %>%
+  
+  # create circle markers to represent Swab Manufacturing HeadQuarters
+  addCircleMarkers(lng = map_data$long,
+                   lat = map_data$lat,
+                   popup = paste("Product:", map_data$product, "<br>",
+                                 "Purpose:", map_data$purpose, "<br>",
+                                 "Location Type:", map_data$loc_desc, "<br>",
+                     "Company Name:", map_data$`Company`, "<br>",
+                                 "Swabs:", map_data$swabs, "<br>",
+                                 "Number of Employees:", map_data$employees, "<br>",
+                                 "Annual Sales", map_data$sales, "<br>"),
+                   radius = 4,
+                   stroke = FALSE,
+                   fillOpacity = 0.5,
+                   group = "Swabs") %>%
+  # add button that zooms out to zoom level 1 of the map (showing the entire world map)
+  addEasyButton(easyButton(
+    icon = "fa-globe",
+    title = "Zoom to Level 1",
+    onClick = JS("
+                 function(btn, map) {
+                 map.setZoom(1);
+                 }")
+		)
+    ) %>% 
+
+     #add layer control option for clusters and map type 
+    addLayersControl(
+      baseGroups = c("OSM(Default)", "Google", "Toner Lite", "NatGeoWorldMap"),
+       overlayGroups = c("Swabs"),
+        # collapsable table
+        options = layersControlOptions(collapsed = TRUE)
+    ) 
+```
+
+```{r}
+saveWidget(m, file = "prototype.html")
+```
+
