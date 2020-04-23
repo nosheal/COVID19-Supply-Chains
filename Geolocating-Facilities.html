@@ -399,7 +399,8 @@ summary {
 <pre><code>## [1] &quot;-73.9844722&quot;                         &quot;40.759011&quot;                          
 ## [3] &quot;Theater District, New York, NY, USA&quot;</code></pre>
 <pre class="r"><code>us_swabs_hq &lt;- us_swabs_hq %&gt;% 
-  mutate(address = paste(Company, Headquarters, sep = &quot;, &quot;)) %&gt;% 
+  rename(Location = Headquarters) %&gt;% 
+  mutate(address = paste(Company, Location, sep = &quot;, &quot;)) %&gt;% 
   mutate(product = &quot;Swabs&quot;, purpose = &quot;Testing&quot;, loc_desc = &quot;Company HQ&quot;) %&gt;% 
   mutate(swabs = case_when(
     Company %in% c(&quot;Copan&quot;,&quot;Becton, Dickinson and Company (BD)&quot;, &quot;Fisher Healthcare&quot;) ~ &quot;Nasopharyngeal and Oropharyngeal Swabs&quot;, 
@@ -422,12 +423,13 @@ summary {
   result &lt;- geocodeAddress(origAddress$address[i])
   origAddress$long[i] &lt;- as.numeric(result[1])
   origAddress$lat[i] &lt;- as.numeric(result[2])
-  origAddress$form_addres[i] &lt;- as.character(result[3])
+  origAddress$form_address[i] &lt;- as.character(result[3])
+
 }</code></pre>
 <pre><code>## [1] &quot;OK&quot;</code></pre>
 <pre><code>## Warning: Unknown or uninitialised column: `long`.</code></pre>
 <pre><code>## Warning: Unknown or uninitialised column: `lat`.</code></pre>
-<pre><code>## Warning: Unknown or uninitialised column: `form_addres`.</code></pre>
+<pre><code>## Warning: Unknown or uninitialised column: `form_address`.</code></pre>
 <pre><code>## [1] &quot;OK&quot;
 ## [1] &quot;OK&quot;
 ## [1] &quot;OK&quot;
@@ -441,45 +443,121 @@ groupedLayerControlPlugin &lt;- htmlDependency(&quot;leaflet-groupedlayercontrol
     src = c(href = &quot;http://ismyrnow.github.io/leaflet-groupedlayercontrol/src/&quot;),
     script = &quot;leaflet.groupedlayercontrol.js&quot;,
     stylesheet = &quot;leaflet.groupedlayercontrol.css&quot;
-)
-
-# A function that takes a plugin htmlDependency object and adds
+)</code></pre>
+<pre class="r"><code>fontawesomePlugin &lt;- htmlDependency(&quot;fontawesome&quot;, &quot;5.5.0&quot;,
+                                    src = c(href = &quot;https://use.fontawesome.com/releases/v5.5.0&quot;),
+                                    stylesheet = &quot;css/all.css&quot;
+)</code></pre>
+<pre class="r"><code>addDependencies &lt;- function(map) {
+  map$dependencies &lt;- c(map$dependencies, leafletDependencies$easyButton(),
+                                          leafletDependencies$fontawesome())
+  
+  map
+}</code></pre>
+<pre class="r"><code># A function that takes a plugin htmlDependency object and adds
 # it to the map. This ensures that however or whenever the map
 # gets rendered, the plugin will be loaded into the browser.
 registerPlugin &lt;- function(map, plugin) {
     map$dependencies &lt;- c(map$dependencies, list(plugin))
     map
 }</code></pre>
-<p>Initialize the map:</p>
-<pre class="r"><code>map_data &lt;- geocoded_us_swabs_hq</code></pre>
-<pre class="r"><code>m &lt;- leaflet(data = map_data) %&gt;% 
+<pre class="r"><code># Function for creating circle markers given a data set
+createCircleMarkersWithData &lt;- function(map, dataSet, clusterId, group, fillColor, icon) {
+  addAwesomeMarkers(map,
+                   popup = dataSet$popup,
+                   icon = awesomeIcons(
+                     icon = icon,
+                     library = &quot;fa&quot;,
+                     markerColor = fillColor,
+                     iconColor = &quot;#ffffff&quot;
+                   ),
+                   clusterOptions = markerClusterOptions(),
+                   clusterId = clusterId,
+                   layerId = dataSet$layerId,
+                   group = group)
+}</code></pre>
+<p>We then add another layer of data to test our layering.</p>
+<pre class="r"><code>top_nonwoven &lt;- read_xlsx(&quot;nonwoven_us.xlsx&quot;)</code></pre>
+<pre class="r"><code>top_nonwoven &lt;- top_nonwoven %&gt;%
+  rename(Company = `Company Name`) %&gt;% 
+  mutate(address = paste(Company, Location, sep = &quot;, &quot;)) %&gt;% 
+  mutate(product = &quot;Nonwoven Fabric&quot;, purpose = &quot;Medical Masks&quot;, loc_desc = &quot;Company HQ&quot;) %&gt;% 
+  rename(sales = &#39;Estimated Annual Revenue&#39;)</code></pre>
+<pre class="r"><code>for (i in c(1,4,5,8,9,10))
+{
+  top_nonwoven$address[i] &lt;- paste(top_nonwoven$address[i], &quot;USA&quot;, sep = &quot;, &quot;)
+}</code></pre>
+<pre class="r"><code>origAddress &lt;- top_nonwoven</code></pre>
+<pre class="r"><code>for(i in 1:nrow(origAddress))
+{
+  result &lt;- geocodeAddress(origAddress$address[i])
+  origAddress$long[i] &lt;- as.numeric(result[1])
+  origAddress$lat[i] &lt;- as.numeric(result[2])
+  origAddress$form_address[i] &lt;- as.character(result[3])
+}</code></pre>
+<pre><code>## [1] &quot;OK&quot;</code></pre>
+<pre><code>## Warning: Unknown or uninitialised column: `long`.</code></pre>
+<pre><code>## Warning: Unknown or uninitialised column: `lat`.</code></pre>
+<pre><code>## Warning: Unknown or uninitialised column: `form_address`.</code></pre>
+<pre><code>## [1] &quot;OK&quot;
+## [1] &quot;OK&quot;
+## [1] &quot;OK&quot;
+## [1] &quot;OK&quot;
+## [1] &quot;OK&quot;
+## [1] &quot;OK&quot;
+## [1] &quot;OK&quot;
+## [1] &quot;OK&quot;
+## [1] &quot;OK&quot;</code></pre>
+<pre class="r"><code>geocoded_global_nonwoven &lt;- origAddress</code></pre>
+<pre class="r"><code>df_for_maps &lt;- bind_rows(geocoded_us_swabs_hq, geocoded_global_nonwoven) %&gt;% 
+  select(-&quot;...1&quot;)</code></pre>
+<pre class="r"><code>#Setup popups and individual layer dataframes
+us_swabs &lt;- geocoded_us_swabs_hq %&gt;% 
+  mutate(layerId = paste(&#39;us_swabs&#39;, row_number(), sep = &#39;.&#39;),
+                      popup = paste(&quot;Product:&quot;, geocoded_us_swabs_hq$product, &quot;&lt;br&gt;&quot;,
+                                 &quot;Purpose:&quot;, geocoded_us_swabs_hq$purpose, &quot;&lt;br&gt;&quot;,
+                                 &quot;Location Type:&quot;, geocoded_us_swabs_hq$loc_desc, &quot;&lt;br&gt;&quot;,
+                     &quot;Company Name:&quot;, geocoded_us_swabs_hq$`Company`, &quot;&lt;br&gt;&quot;,
+                                 &quot;Swabs:&quot;, 
+                     geocoded_us_swabs_hq$swabs, &quot;&lt;br&gt;&quot;,
+                                 &quot;Number of Employees:&quot;, geocoded_us_swabs_hq$employees, &quot;&lt;br&gt;&quot;,
+                                 &quot;Annual Sales&quot;, geocoded_us_swabs_hq$sales, &quot;&lt;br&gt;&quot;))
+
+global_nonwoven &lt;- geocoded_global_nonwoven %&gt;% 
+  mutate(layerId = paste(&#39;global_nonwoven&#39;, row_number(), sep = &#39;.&#39;), 
+         popup = paste(&quot;Product:&quot;, product, &quot;&lt;br&gt;&quot;,
+                                 &quot;Purpose:&quot;, purpose, &quot;&lt;br&gt;&quot;,
+                                 &quot;Location Type:&quot;, loc_desc, &quot;&lt;br&gt;&quot;,
+                     &quot;Company Name:&quot;, `Company`, &quot;&lt;br&gt;&quot;,
+                                 &quot;Annual Sales&quot;, sales, &quot;&lt;br&gt;&quot;))</code></pre>
+<pre class="r"><code>sc_color &lt;- colorFactor(c(&quot;purple&quot;, &quot;darkred&quot;), domain = df_for_maps$purpose)</code></pre>
+<pre class="r"><code>m &lt;- leaflet(data = df_for_maps) %&gt;% 
   # add layers of maps (decided to provide three options)
-    addTiles(group = &quot;OSM (default)&quot;) %&gt;%
+  addProviderTiles(providers$Stamen.TonerLite, group = &quot;Toner Lite&quot;) %&gt;%
+  addTiles(group = &quot;OSM (default)&quot;) %&gt;%
   addTiles(urlTemplate = &quot;https://mts1.google.com/vt/lyrs=s&amp;hl=en&amp;src=app&amp;x={x}&amp;y={y}&amp;z={z}&amp;s=G&quot;, group = &quot;Google&quot;) %&gt;%
-    addProviderTiles(providers$Stamen.TonerLite, group = &quot;Toner Lite&quot;) %&gt;%
-    addProviderTiles(providers$Esri.NatGeoWorldMap, group = &quot;NatGeoWorldMap&quot;) %&gt;% 
   registerPlugin(groupedLayerControlPlugin) %&gt;%
+  registerPlugin(fontawesomePlugin) %&gt;%
   
   onRender(&quot;function(el, x, data) {
-           var baseLayers = {
-           &#39;NatGeoWorldMap&#39;: this.layerManager.getLayerGroup(&#39;NatGeoWorldMap&#39;),
-           &#39;Google&#39;: this.layerManager.getLayerGroup(&#39;Google&#39;),
-            &#39;Toner Lite (default)&#39;: this.layerManager.getLayerGroup(&#39;Toner Lite (default)&#39;)
-           };
-           
-           var groupedOverlays = {
-           &#39;Testing&#39;: {
-           &#39;Swabs&#39;: this.layerManager.getLayerGroup(&#39;Swabs&#39;),
-           },
-           };
+        var baseLayers = {
+            &#39;Toner Lite&#39;: this.layerManager.getLayerGroup(&#39;Toner Lite&#39;),
+            &#39;Google&#39;: this.layerManager.getLayerGroup(&#39;Google&#39;),
+            &#39;OSM (default)&#39;: this.layerManager.getLayerGroup(&#39;OSM (default)&#39;),
+        };
 
-          var Options = {
-            groupCheckboxes: true
-          };
+        var groupedOverlays = {
+            &#39;Testing&#39;: {
+                &#39;Swabs&#39;: this.layerManager.getLayerGroup(&#39;Swabs&#39;),
+            },
+            &#39;Masks&#39;: {
+                &#39;Nonwoven Fabrics&#39;: this.layerManager.getLayerGroup(&#39;Nonwoven Fabric&#39;),
+            }
+        };
 
-           console.log(L.control.groupedLayers);
-           L.control.groupedLayers(baseLayers, groupedOverlays, Options).addTo(this);
-           }&quot;, data = map_data %&gt;% select(lat, long, purpose)) %&gt;%
+        console.log(L.control.groupedLayers);
+        L.control.groupedLayers(baseLayers, groupedOverlays).addTo(this);
+    }&quot;, data = df_for_maps) %&gt;%
   # set the boundary of the map so that the user cannot zoom out of one world 
     # view of the map
     setMaxBounds(lng1 = 210,
@@ -493,20 +571,18 @@ registerPlugin &lt;- function(map, plugin) {
         toggleDisplay = T
     ) %&gt;%
   
-  # create circle markers to represent Swab Manufacturing HeadQuarters
-  addCircleMarkers(lng = map_data$long,
-                   lat = map_data$lat,
-                   popup = paste(&quot;Product:&quot;, map_data$product, &quot;&lt;br&gt;&quot;,
-                                 &quot;Purpose:&quot;, map_data$purpose, &quot;&lt;br&gt;&quot;,
-                                 &quot;Location Type:&quot;, map_data$loc_desc, &quot;&lt;br&gt;&quot;,
-                     &quot;Company Name:&quot;, map_data$`Company`, &quot;&lt;br&gt;&quot;,
-                                 &quot;Swabs:&quot;, map_data$swabs, &quot;&lt;br&gt;&quot;,
-                                 &quot;Number of Employees:&quot;, map_data$employees, &quot;&lt;br&gt;&quot;,
-                                 &quot;Annual Sales&quot;, map_data$sales, &quot;&lt;br&gt;&quot;),
-                   radius = 4,
-                   stroke = FALSE,
-                   fillOpacity = 0.5,
-                   group = &quot;Swabs&quot;) %&gt;%
+  #1. Swabs
+  createCircleMarkersWithData(dataSet = us_swabs,
+                              fillColor = &quot;purple&quot;,
+                              icon = &quot;fa-syringe&quot;,
+                              clusterId = &quot;domSwabs&quot;,
+                              group = &quot;Swabs&quot;) %&gt;%
+  #2. Nonwoven Fabrics
+  createCircleMarkersWithData(dataSet = global_nonwoven,
+                              fillColor = &quot;darkred&quot;,
+                              icon = &quot;fa-head-side-mask&quot;,
+                              clusterId = &quot;glblNonWoven&quot;,
+                              group = &quot;Nonwoven Fabric&quot;) %&gt;%
   # add button that zooms out to zoom level 1 of the map (showing the entire world map)
   addEasyButton(easyButton(
     icon = &quot;fa-globe&quot;,
@@ -519,13 +595,21 @@ registerPlugin &lt;- function(map, plugin) {
     ) %&gt;% 
 
      #add layer control option for clusters and map type 
-    addLayersControl(
-      baseGroups = c(&quot;OSM(Default)&quot;, &quot;Google&quot;, &quot;Toner Lite&quot;, &quot;NatGeoWorldMap&quot;),
-       overlayGroups = c(&quot;Swabs&quot;),
+    #addLayersControl(
+      #baseGroups = c(&quot;OSM(Default)&quot;, &quot;Google&quot;, &quot;Toner Lite&quot;, &quot;NatGeoWorldMap&quot;),
+       #overlayGroups = c(&quot;Swabs&quot;, &quot;Nonwoven Fabrics&quot;),
         # collapsable table
-        options = layersControlOptions(collapsed = TRUE)
-    ) </code></pre>
-<pre class="r"><code>saveWidget(m, file = &quot;prototype.html&quot;)</code></pre>
+       # options = layersControlOptions(collapsed = TRUE)
+    #) %&gt;% 
+    # add legend (table) that shows which color represents which country of origin (color key) - bottom left (due to mini map)
+  addLegend(position = c(&quot;bottomleft&quot;),
+            values = df_for_maps$purpose,
+            pal = sc_color,
+            title = &quot;Purpose&quot;
+  ) </code></pre>
+<pre><code>## Assuming &quot;long&quot; and &quot;lat&quot; are longitude and latitude, respectively
+## Assuming &quot;long&quot; and &quot;lat&quot; are longitude and latitude, respectively</code></pre>
+<pre class="r"><code>saveWidget(m, &quot;prototype.html&quot;)</code></pre>
 
 
 
