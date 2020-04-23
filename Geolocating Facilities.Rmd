@@ -31,7 +31,7 @@ us_swabs_hq <- read_xlsx("swabs_us.xlsx")
 We then begin the process of geocoding. We will use [Google's geolocating service](https://developers.google.com/maps/documentation/geocoding/intro) to process our geolocation requests. To use this service, we need to get an [API key](https://developers.google.com/maps/documentation/geocoding/get-api-key)
 
 ```{r, echo = FALSE, Include = FALSE}
-api_key <- c("YOUR_API_KEY")
+api_key <- c("AIzaSyA1pwzK3BaX7_um-_TUrS7aGfCHQvp68b8")
 ```
 
 We define our function, which will take an address as an input and output a latitude and longitude result. 
@@ -64,7 +64,8 @@ geocodeAddress("Time Square, New York City")
 
 ```{r}
 us_swabs_hq <- us_swabs_hq %>% 
-  mutate(address = paste(Company, Headquarters, sep = ", ")) %>% 
+  rename(Location = Headquarters) %>% 
+  mutate(address = paste(Company, Location, sep = ", ")) %>% 
   mutate(product = "Swabs", purpose = "Testing", loc_desc = "Company HQ") %>% 
   mutate(swabs = case_when(
     Company %in% c("Copan","Becton, Dickinson and Company (BD)", "Fisher Healthcare") ~ "Nasopharyngeal and Oropharyngeal Swabs", 
@@ -99,9 +100,11 @@ for(i in 1:nrow(origAddress))
   result <- geocodeAddress(origAddress$address[i])
   origAddress$long[i] <- as.numeric(result[1])
   origAddress$lat[i] <- as.numeric(result[2])
-  origAddress$form_addres[i] <- as.character(result[3])
+  origAddress$form_address[i] <- as.character(result[3])
+
 }
 ```
+
 
 Save this as a new object to prepare for leaflet plotting. In doing so we want to define as identifying factors for this layer as possible. At the minimum, we want to identify the product, purpose, and level in the supply chain. 
 
@@ -120,7 +123,25 @@ groupedLayerControlPlugin <- htmlDependency("leaflet-groupedlayercontrol", "0.61
     script = "leaflet.groupedlayercontrol.js",
     stylesheet = "leaflet.groupedlayercontrol.css"
 )
+```
 
+```{r}
+fontawesomePlugin <- htmlDependency("fontawesome", "5.5.0",
+                                    src = c(href = "https://use.fontawesome.com/releases/v5.5.0"),
+                                    stylesheet = "css/all.css"
+)
+```
+
+```{r}
+addDependencies <- function(map) {
+  map$dependencies <- c(map$dependencies, leafletDependencies$easyButton(),
+                                          leafletDependencies$fontawesome())
+  
+  map
+}
+```
+
+```{r}
 # A function that takes a plugin htmlDependency object and adds
 # it to the map. This ensures that however or whenever the map
 # gets rendered, the plugin will be loaded into the browser.
@@ -130,42 +151,131 @@ registerPlugin <- function(map, plugin) {
 }
 ```
 
-Initialize the map: 
+```{r}
+# Function for creating circle markers given a data set
+createCircleMarkersWithData <- function(map, dataSet, clusterId, group, fillColor, icon) {
+  addAwesomeMarkers(map,
+                   popup = dataSet$popup,
+                   icon = awesomeIcons(
+                     icon = icon,
+                     library = "fa",
+                     markerColor = fillColor,
+                     iconColor = "#ffffff"
+                   ),
+                   clusterOptions = markerClusterOptions(),
+                   clusterId = clusterId,
+                   layerId = dataSet$layerId,
+                   group = group)
+}
+
+```
+We then add another layer of data to test our layering. 
 
 ```{r}
-map_data <- geocoded_us_swabs_hq
+top_nonwoven <- read_xlsx("nonwoven_us.xlsx")
+```
+
+```{r}
+top_nonwoven <- top_nonwoven %>%
+  rename(Company = `Company Name`) %>% 
+  mutate(address = paste(Company, Location, sep = ", ")) %>% 
+  mutate(product = "Nonwoven Fabric", purpose = "Medical Masks", loc_desc = "Company HQ") %>% 
+  rename(sales = 'Estimated Annual Revenue')
 ```
 
 
 ```{r}
-m <- leaflet(data = map_data) %>% 
+for (i in c(1,4,5,8,9,10))
+{
+  top_nonwoven$address[i] <- paste(top_nonwoven$address[i], "USA", sep = ", ")
+}
+                                   
+
+```
+
+
+```{r}
+origAddress <- top_nonwoven
+```
+
+
+
+```{r}
+for(i in 1:nrow(origAddress))
+{
+  result <- geocodeAddress(origAddress$address[i])
+  origAddress$long[i] <- as.numeric(result[1])
+  origAddress$lat[i] <- as.numeric(result[2])
+  origAddress$form_address[i] <- as.character(result[3])
+}
+```
+
+```{r}
+geocoded_global_nonwoven <- origAddress
+```
+
+```{r}
+df_for_maps <- bind_rows(geocoded_us_swabs_hq, geocoded_global_nonwoven) %>% 
+  select(-"...1")
+```
+
+```{r}
+#Setup popups and individual layer dataframes
+us_swabs <- geocoded_us_swabs_hq %>% 
+  mutate(layerId = paste('us_swabs', row_number(), sep = '.'),
+                      popup = paste("Product:", geocoded_us_swabs_hq$product, "<br>",
+                                 "Purpose:", geocoded_us_swabs_hq$purpose, "<br>",
+                                 "Location Type:", geocoded_us_swabs_hq$loc_desc, "<br>",
+                     "Company Name:", geocoded_us_swabs_hq$`Company`, "<br>",
+                                 "Swabs:", 
+                     geocoded_us_swabs_hq$swabs, "<br>",
+                                 "Number of Employees:", geocoded_us_swabs_hq$employees, "<br>",
+                                 "Annual Sales", geocoded_us_swabs_hq$sales, "<br>"))
+
+global_nonwoven <- geocoded_global_nonwoven %>% 
+  mutate(layerId = paste('global_nonwoven', row_number(), sep = '.'), 
+         popup = paste("Product:", product, "<br>",
+                                 "Purpose:", purpose, "<br>",
+                                 "Location Type:", loc_desc, "<br>",
+                     "Company Name:", `Company`, "<br>",
+                                 "Annual Sales", sales, "<br>"))
+```
+
+
+```{r}
+sc_color <- colorFactor(c("purple", "darkred"), domain = df_for_maps$purpose)
+
+```
+
+
+```{r}
+m <- leaflet(data = df_for_maps) %>% 
   # add layers of maps (decided to provide three options)
-    addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") %>%
+  addTiles(group = "OSM (default)") %>%
   addTiles(urlTemplate = "https://mts1.google.com/vt/lyrs=s&hl=en&src=app&x={x}&y={y}&z={z}&s=G", group = "Google") %>%
-    addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") %>%
-    addProviderTiles(providers$Esri.NatGeoWorldMap, group = "NatGeoWorldMap") %>% 
   registerPlugin(groupedLayerControlPlugin) %>%
+  registerPlugin(fontawesomePlugin) %>%
   
   onRender("function(el, x, data) {
-           var baseLayers = {
-           'NatGeoWorldMap': this.layerManager.getLayerGroup('NatGeoWorldMap'),
-           'Google': this.layerManager.getLayerGroup('Google'),
-            'Toner Lite (default)': this.layerManager.getLayerGroup('Toner Lite (default)')
-           };
-           
-           var groupedOverlays = {
-           'Testing': {
-           'Swabs': this.layerManager.getLayerGroup('Swabs'),
-           },
-           };
+        var baseLayers = {
+            'Toner Lite': this.layerManager.getLayerGroup('Toner Lite'),
+            'Google': this.layerManager.getLayerGroup('Google'),
+            'OSM (default)': this.layerManager.getLayerGroup('OSM (default)'),
+        };
 
-          var Options = {
-            groupCheckboxes: true
-          };
+        var groupedOverlays = {
+            'Testing': {
+                'Swabs': this.layerManager.getLayerGroup('Swabs'),
+            },
+            'Masks': {
+                'Nonwoven Fabrics': this.layerManager.getLayerGroup('Nonwoven Fabric'),
+            }
+        };
 
-           console.log(L.control.groupedLayers);
-           L.control.groupedLayers(baseLayers, groupedOverlays, Options).addTo(this);
-           }", data = map_data %>% select(lat, long, purpose)) %>%
+        console.log(L.control.groupedLayers);
+        L.control.groupedLayers(baseLayers, groupedOverlays).addTo(this);
+    }", data = df_for_maps) %>%
   # set the boundary of the map so that the user cannot zoom out of one world 
     # view of the map
     setMaxBounds(lng1 = 210,
@@ -179,20 +289,18 @@ m <- leaflet(data = map_data) %>%
         toggleDisplay = T
     ) %>%
   
-  # create circle markers to represent Swab Manufacturing HeadQuarters
-  addCircleMarkers(lng = map_data$long,
-                   lat = map_data$lat,
-                   popup = paste("Product:", map_data$product, "<br>",
-                                 "Purpose:", map_data$purpose, "<br>",
-                                 "Location Type:", map_data$loc_desc, "<br>",
-                     "Company Name:", map_data$`Company`, "<br>",
-                                 "Swabs:", map_data$swabs, "<br>",
-                                 "Number of Employees:", map_data$employees, "<br>",
-                                 "Annual Sales", map_data$sales, "<br>"),
-                   radius = 4,
-                   stroke = FALSE,
-                   fillOpacity = 0.5,
-                   group = "Swabs") %>%
+  #1. Swabs
+  createCircleMarkersWithData(dataSet = us_swabs,
+                              fillColor = "purple",
+                              icon = "fa-syringe",
+                              clusterId = "domSwabs",
+                              group = "Swabs") %>%
+  #2. Nonwoven Fabrics
+  createCircleMarkersWithData(dataSet = global_nonwoven,
+                              fillColor = "darkred",
+                              icon = "fa-head-side-mask",
+                              clusterId = "glblNonWoven",
+                              group = "Nonwoven Fabric") %>%
   # add button that zooms out to zoom level 1 of the map (showing the entire world map)
   addEasyButton(easyButton(
     icon = "fa-globe",
@@ -205,15 +313,21 @@ m <- leaflet(data = map_data) %>%
     ) %>% 
 
      #add layer control option for clusters and map type 
-    addLayersControl(
-      baseGroups = c("OSM(Default)", "Google", "Toner Lite", "NatGeoWorldMap"),
-       overlayGroups = c("Swabs"),
+    #addLayersControl(
+      #baseGroups = c("OSM(Default)", "Google", "Toner Lite", "NatGeoWorldMap"),
+       #overlayGroups = c("Swabs", "Nonwoven Fabrics"),
         # collapsable table
-        options = layersControlOptions(collapsed = TRUE)
-    ) 
+       # options = layersControlOptions(collapsed = TRUE)
+    #) %>% 
+    # add legend (table) that shows which color represents which country of origin (color key) - bottom left (due to mini map)
+  addLegend(position = c("bottomleft"),
+            values = df_for_maps$purpose,
+            pal = sc_color,
+            title = "Purpose"
+  ) 
 ```
 
 ```{r}
-saveWidget(m, file = "prototype.html")
+saveWidget(m, "prototype.html")
 ```
 
