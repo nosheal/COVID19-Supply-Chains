@@ -31,7 +31,7 @@ us_swabs_hq <- read_xlsx("swabs_us.xlsx")
 We then begin the process of geocoding. We will use [Google's geolocating service](https://developers.google.com/maps/documentation/geocoding/intro) to process our geolocation requests. To use this service, we need to get an [API key](https://developers.google.com/maps/documentation/geocoding/get-api-key)
 
 ```{r, echo = FALSE, Include = FALSE}
-api_key <- c("YOUR_KEY_HERE")
+api_key <- c("YOUR_KEY")
 ```
 
 We define our function, which will take an address as an input and output a latitude and longitude result. 
@@ -87,7 +87,7 @@ We can confirm that this is the approximate location through google.
 knitr::include_graphics("geolocation checking.png")
 ```
 
-Now we loop through the addresses to get the latitude and longitude of each address and add iit to the original address data frame in the  new columns lat and long. 
+Now we loop through the addresses to get the latitude and longitude of each address and add it to the original address data frame in the  new columns lat and long. 
 
 ```{r}
 origAddress <- us_swabs_hq
@@ -126,8 +126,8 @@ groupedLayerControlPlugin <- htmlDependency("leaflet-groupedlayercontrol", "0.61
 ```
 
 ```{r}
-fontawesomePlugin <- htmlDependency("fontawesome", "5.5.0",
-                                    src = c(href = "https://use.fontawesome.com/releases/v5.5.0"),
+fontawesomePlugin <- htmlDependency("fontawesome", "5.13.0",
+                                    src = c(href = "https://use.fontawesome.com/releases/v5.13.0"),
                                     stylesheet = "css/all.css"
 )
 ```
@@ -154,6 +154,14 @@ registerPlugin <- function(map, plugin) {
 ```{r}
 # Function for creating circle markers given a data set
 createCircleMarkersWithData <- function(map, dataSet, clusterId, group, fillColor, icon) {
+  jsFuncStr = str_replace_all(str_interp("
+    function(cluster) {
+      var childCount = cluster.getChildCount();
+      return new L.DivIcon({
+                                               html: '<div style=\"background-color:${fillColor}\"><span>' + cluster.getChildCount() + '</div><span>',
+                                               className: 'marker-cluster', iconSize: new L.Point(40, 40)
+                                             });
+    }", list(fillColor = fillColor)), "[\r\n]" , "")
   addAwesomeMarkers(map,
                    popup = dataSet$popup,
                    icon = awesomeIcons(
@@ -162,12 +170,13 @@ createCircleMarkersWithData <- function(map, dataSet, clusterId, group, fillColo
                      markerColor = fillColor,
                      iconColor = "#ffffff"
                    ),
-                   clusterOptions = markerClusterOptions(),
+                   clusterOptions = markerClusterOptions(
+                      iconCreateFunction = JS(jsFuncStr)
+                   ),
                    clusterId = clusterId,
                    layerId = dataSet$layerId,
                    group = group)
 }
-
 ```
 We then add another layer of data to test our layering. 
 
@@ -244,16 +253,15 @@ global_nonwoven <- geocoded_global_nonwoven %>%
 
 ```{r}
 sc_color <- colorFactor(c("purple", "darkred"), domain = df_for_maps$purpose)
-
 ```
 
 
 ```{r}
 m <- leaflet(data = df_for_maps) %>% 
   # add layers of maps (decided to provide three options)
-  addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") %>%
-  addTiles(group = "OSM (default)") %>%
+  addTiles(group = "OSM") %>%
   addTiles(urlTemplate = "https://mts1.google.com/vt/lyrs=s&hl=en&src=app&x={x}&y={y}&z={z}&s=G", group = "Google") %>%
+  addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") %>%
   registerPlugin(groupedLayerControlPlugin) %>%
   registerPlugin(fontawesomePlugin) %>%
   
@@ -261,7 +269,7 @@ m <- leaflet(data = df_for_maps) %>%
         var baseLayers = {
             'Toner Lite': this.layerManager.getLayerGroup('Toner Lite'),
             'Google': this.layerManager.getLayerGroup('Google'),
-            'OSM (default)': this.layerManager.getLayerGroup('OSM (default)'),
+            'OSM': this.layerManager.getLayerGroup('OSM'),
         };
 
         var groupedOverlays = {
@@ -272,9 +280,13 @@ m <- leaflet(data = df_for_maps) %>%
                 'Nonwoven Fabrics': this.layerManager.getLayerGroup('Nonwoven Fabric'),
             }
         };
+        
+        var Options = {
+          groupCheckboxes: true
+        };
 
         console.log(L.control.groupedLayers);
-        L.control.groupedLayers(baseLayers, groupedOverlays).addTo(this);
+        L.control.groupedLayers(baseLayers, groupedOverlays, Options).addTo(this);
     }", data = df_for_maps) %>%
   # set the boundary of the map so that the user cannot zoom out of one world 
     # view of the map
@@ -291,13 +303,13 @@ m <- leaflet(data = df_for_maps) %>%
   
   #1. Swabs
   createCircleMarkersWithData(dataSet = us_swabs,
-                              fillColor = "purple",
+                              fillColor = "darkred",
                               icon = "fa-syringe",
                               clusterId = "domSwabs",
                               group = "Swabs") %>%
   #2. Nonwoven Fabrics
   createCircleMarkersWithData(dataSet = global_nonwoven,
-                              fillColor = "darkred",
+                              fillColor = "purple",
                               icon = "fa-head-side-mask",
                               clusterId = "glblNonWoven",
                               group = "Nonwoven Fabric") %>%
