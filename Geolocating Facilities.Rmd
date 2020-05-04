@@ -1,8 +1,13 @@
 ---
-title: "Geocoding"
+title: "Geocoding and Maping"
 author: "Nikhil Kalathil"
-date: "4/19/2020"
-output: html_document
+date: "5/4/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
 ---
 
 ```{r setup, include=FALSE}
@@ -21,7 +26,12 @@ library(RJSONIO)
 library(readxl)
 library(widgetframe)
 ```
+
+# Geocoding
+
 In this file we will define a procedure for geolocating entitites based on a csv of their addresses. 
+
+## Swabs
 
 We start by loading our data. 
 ```{r}
@@ -112,6 +122,56 @@ Save this as a new object to prepare for leaflet plotting. In doing so we want t
 geocoded_us_swabs_hq <- origAddress 
 ```
 
+## Nonwoven Fabrics 
+
+We then add another layer of data to test our layering. 
+
+```{r}
+top_nonwoven <- read_xlsx("nonwoven_us.xlsx")
+```
+
+```{r}
+top_nonwoven <- top_nonwoven %>%
+  rename(Company = `Company Name`) %>% 
+  mutate(address = paste(Company, Location, sep = ", ")) %>% 
+  mutate(product = "Nonwoven Fabric", purpose = "Medical Masks", loc_desc = "Company HQ") %>% 
+  rename(sales = 'Estimated Annual Revenue')
+```
+
+
+```{r}
+for (i in c(1,4,5,8,9,10))
+{
+  top_nonwoven$address[i] <- paste(top_nonwoven$address[i], "USA", sep = ", ")
+}
+                                   
+
+```
+
+
+```{r}
+origAddress <- top_nonwoven
+```
+
+
+
+```{r}
+for(i in 1:nrow(origAddress))
+{
+  result <- geocodeAddress(origAddress$address[i])
+  origAddress$long[i] <- as.numeric(result[1])
+  origAddress$lat[i] <- as.numeric(result[2])
+  origAddress$form_address[i] <- as.character(result[3])
+}
+```
+
+```{r}
+geocoded_global_nonwoven <- origAddress
+```
+# Mapping 
+
+## Set up dependencies
+
 Now, we can turn to using leaflet to plot these locations.
 
 We first define tools that will let us control the layers of our map. 
@@ -158,7 +218,7 @@ createCircleMarkersWithData <- function(map, dataSet, clusterId, group, fillColo
     function(cluster) {
       var childCount = cluster.getChildCount();
       return new L.DivIcon({
-                                               html: '<div style=\"background-color:${fillColor}\"><span>' + cluster.getChildCount() + '</div><span>',
+                                               html: '<div style=\"background-color:${fillColor}; color: white\"><span>' + cluster.getChildCount() + '</div><span>',
                                                className: 'marker-cluster', iconSize: new L.Point(40, 40)
                                              });
     }", list(fillColor = fillColor)), "[\r\n]" , "")
@@ -178,50 +238,8 @@ createCircleMarkersWithData <- function(map, dataSet, clusterId, group, fillColo
                    group = group)
 }
 ```
-We then add another layer of data to test our layering. 
 
-```{r}
-top_nonwoven <- read_xlsx("nonwoven_us.xlsx")
-```
-
-```{r}
-top_nonwoven <- top_nonwoven %>%
-  rename(Company = `Company Name`) %>% 
-  mutate(address = paste(Company, Location, sep = ", ")) %>% 
-  mutate(product = "Nonwoven Fabric", purpose = "Medical Masks", loc_desc = "Company HQ") %>% 
-  rename(sales = 'Estimated Annual Revenue')
-```
-
-
-```{r}
-for (i in c(1,4,5,8,9,10))
-{
-  top_nonwoven$address[i] <- paste(top_nonwoven$address[i], "USA", sep = ", ")
-}
-                                   
-
-```
-
-
-```{r}
-origAddress <- top_nonwoven
-```
-
-
-
-```{r}
-for(i in 1:nrow(origAddress))
-{
-  result <- geocodeAddress(origAddress$address[i])
-  origAddress$long[i] <- as.numeric(result[1])
-  origAddress$lat[i] <- as.numeric(result[2])
-  origAddress$form_address[i] <- as.character(result[3])
-}
-```
-
-```{r}
-geocoded_global_nonwoven <- origAddress
-```
+## Prepare Data 
 
 ```{r}
 df_for_maps <- bind_rows(geocoded_us_swabs_hq, geocoded_global_nonwoven) %>% 
@@ -250,17 +268,16 @@ global_nonwoven <- geocoded_global_nonwoven %>%
                                  "Annual Sales", sales, "<br>"))
 ```
 
-
+## Define Colors 
 ```{r}
 sc_color <- colorFactor(c("purple", "darkred"), domain = df_for_maps$purpose)
 ```
 
+## Map 
 
 ```{r}
 m <- leaflet(data = df_for_maps) %>% 
   # add layers of maps (decided to provide three options)
-  addTiles(group = "OSM") %>%
-  addTiles(urlTemplate = "https://mts1.google.com/vt/lyrs=s&hl=en&src=app&x={x}&y={y}&z={z}&s=G", group = "Google") %>%
   addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") %>%
   registerPlugin(groupedLayerControlPlugin) %>%
   registerPlugin(fontawesomePlugin) %>%
@@ -268,8 +285,6 @@ m <- leaflet(data = df_for_maps) %>%
   onRender("function(el, x, data) {
         var baseLayers = {
             'Toner Lite': this.layerManager.getLayerGroup('Toner Lite'),
-            'Google': this.layerManager.getLayerGroup('Google'),
-            'OSM': this.layerManager.getLayerGroup('OSM'),
         };
 
         var groupedOverlays = {
