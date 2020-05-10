@@ -1,0 +1,13 @@
+name: COVID19_SUPPLY_CHAINS
+title: COVID19_SUPPLY_CHAINS
+username:
+account: nosheal
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2276843
+bundleId: 3129105
+url: https://nosheal.shinyapps.io/COVID19_SUPPLY_CHAINS/
+when: 1589149972.18774
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: app.R
