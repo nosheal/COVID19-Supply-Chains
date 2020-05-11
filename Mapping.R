@@ -11,9 +11,10 @@ library(widgetframe)
 library(lattice)
 
 #Load the Data
-df_for_maps <- readRDS("Data//df_for_maps.rds")
-us_swabs <- readRDS("Data//us_swabs.rds")
-global_nonwoven <- readRDS("Data//global_nonwoven.rds")
+
+df_for_maps <- readRDS("Data/df_for_maps.rds")
+swabs <- readRDS("Data/swabs.rds")
+nonwoven <- readRDS("Data//nonwoven.RDS")
 
 ### LOAD MAPPING PREREQS
 
@@ -92,8 +93,9 @@ m <- leaflet(data = df_for_maps) %>%
             'Testing': {
                 'Swabs': this.layerManager.getLayerGroup('Swabs'),
             },
-            'Masks': {
+            'Surgical Masks': {
                 'Nonwoven Fabrics': this.layerManager.getLayerGroup('Nonwoven Fabric'),
+                
             }
         };
         
@@ -118,16 +120,16 @@ m <- leaflet(data = df_for_maps) %>%
   ) %>%
   
   #1. Swabs
-  createCircleMarkersWithData(dataSet = us_swabs,
+  createCircleMarkersWithData(dataSet = swabs,
                               fillColor = "darkred",
                               icon = "fa-syringe",
-                              clusterId = "domSwabs",
+                              clusterId = "Swabs",
                               group = "Swabs") %>%
   #2. Nonwoven Fabrics
-  createCircleMarkersWithData(dataSet = global_nonwoven,
+  createCircleMarkersWithData(dataSet = nonwoven,
                               fillColor = "purple",
                               icon = "fa-head-side-mask",
-                              clusterId = "glblNonWoven",
+                              clusterId = "NonWoven",
                               group = "Nonwoven Fabric") %>%
   # add button that zooms out to zoom level 1 of the map (showing the entire world map)
   addEasyButton(easyButton(
@@ -153,3 +155,4 @@ m <- leaflet(data = df_for_maps) %>%
             pal = sc_color,
             title = "Purpose"
   ) 
+

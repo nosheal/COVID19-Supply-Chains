@@ -21,9 +21,9 @@ library(lattice)
 library(DT)
 
 #Load the Data
-df_for_maps <- readRDS("Data//df_for_maps.rds")
-us_swabs <- readRDS("Data//us_swabs.rds")
-global_nonwoven <- readRDS("Data//global_nonwoven.rds")
+df_for_maps <- readRDS("Data/df_for_maps.rds")
+swabs <- readRDS("Data/swabs.rds")
+nonwoven <- readRDS("Data//nonwoven.RDS")
 
 ### LOAD MAPPING PREREQS
 
@@ -127,13 +127,13 @@ server <- function(input, output, session) {
 
 
     output$mymap <- renderLeaflet({
-        leaflet(data = df_for_maps) %>% 
-            # add layers of maps (decided to provide three options)
-            addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") %>%
-            registerPlugin(groupedLayerControlPlugin) %>%
-            registerPlugin(fontawesomePlugin) %>%
-            
-            onRender("function(el, x, data) {
+      leaflet(data = df_for_maps) %>% 
+        # add layers of maps (decided to provide three options)
+        addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") %>%
+        registerPlugin(groupedLayerControlPlugin) %>%
+        registerPlugin(fontawesomePlugin) %>%
+        
+        onRender("function(el, x, data) {
         var baseLayers = {
             'Toner Lite': this.layerManager.getLayerGroup('Toner Lite'),
         };
@@ -142,8 +142,9 @@ server <- function(input, output, session) {
             'Testing': {
                 'Swabs': this.layerManager.getLayerGroup('Swabs'),
             },
-            'Masks': {
+            'Surgical Masks': {
                 'Nonwoven Fabrics': this.layerManager.getLayerGroup('Nonwoven Fabric'),
+                
             }
         };
         
@@ -154,55 +155,57 @@ server <- function(input, output, session) {
         console.log(L.control.groupedLayers);
         L.control.groupedLayers(baseLayers, groupedOverlays, Options).addTo(this);
     }", data = df_for_maps) %>%
-            # set the boundary of the map so that the user cannot zoom out of one world 
-            # view of the map
-            setMaxBounds(lng1 = 210,
-                         lat1 = 89.45016124669523,
-                         lng2 = -210,
-                         lat2 = -87.71179927260242) %>%
-            
-            # add mini map on bottom right corner with collapse option
-            addMiniMap(
-                tiles = providers$Stamen.TonerLite,
-                toggleDisplay = T
-            ) %>%
-            
-            #1. Swabs
-            createCircleMarkersWithData(dataSet = us_swabs,
-                                        fillColor = "darkred",
-                                        icon = "fa-syringe",
-                                        clusterId = "domSwabs",
-                                        group = "Swabs") %>%
-            #2. Nonwoven Fabrics
-            createCircleMarkersWithData(dataSet = global_nonwoven,
-                                        fillColor = "purple",
-                                        icon = "fa-head-side-mask",
-                                        clusterId = "glblNonWoven",
-                                        group = "Nonwoven Fabric") %>%
-            # add button that zooms out to zoom level 1 of the map (showing the entire world map)
-            addEasyButton(easyButton(
-                icon = "fa-globe",
-                title = "Zoom to Level 1",
-                onClick = JS("
+        # set the boundary of the map so that the user cannot zoom out of one world 
+        # view of the map
+        setMaxBounds(lng1 = 210,
+                     lat1 = 89.45016124669523,
+                     lng2 = -210,
+                     lat2 = -87.71179927260242) %>%
+        
+        # add mini map on bottom right corner with collapse option
+        addMiniMap(
+          tiles = providers$Stamen.TonerLite,
+          toggleDisplay = T
+        ) %>%
+        
+        #1. Swabs
+        createCircleMarkersWithData(dataSet = swabs,
+                                    fillColor = "darkred",
+                                    icon = "fa-syringe",
+                                    clusterId = "Swabs",
+                                    group = "Swabs") %>%
+        #2. Nonwoven Fabrics
+        createCircleMarkersWithData(dataSet = nonwoven,
+                                    fillColor = "purple",
+                                    icon = "fa-head-side-mask",
+                                    clusterId = "NonWoven",
+                                    group = "Nonwoven Fabric") %>%
+        # add button that zooms out to zoom level 1 of the map (showing the entire world map)
+        addEasyButton(easyButton(
+          icon = "fa-globe",
+          title = "Zoom to Level 1",
+          onClick = JS("
                  function(btn, map) {
                  map.setZoom(1);
                  }")
-            )
-            ) %>% 
-            
-            #add layer control option for clusters and map type 
-            #addLayersControl(
-            #baseGroups = c("OSM(Default)", "Google", "Toner Lite", "NatGeoWorldMap"),
-            #overlayGroups = c("Swabs", "Nonwoven Fabrics"),
-            # collapsable table
-            # options = layersControlOptions(collapsed = TRUE)
-            #) %>% 
-            # add legend (table) that shows which color represents which country of origin (color key) - bottom left (due to mini map)
-            addLegend(position = c("bottomleft"),
-                      values = df_for_maps$purpose,
-                      pal = sc_color,
-                      title = "Purpose"
-            ) 
+        )
+        ) %>% 
+        
+        #add layer control option for clusters and map type 
+        #addLayersControl(
+        #baseGroups = c("OSM(Default)", "Google", "Toner Lite", "NatGeoWorldMap"),
+        #overlayGroups = c("Swabs", "Nonwoven Fabrics"),
+        # collapsable table
+        # options = layersControlOptions(collapsed = TRUE)
+        #) %>% 
+        # add legend (table) that shows which color represents which country of origin (color key) - bottom left (due to mini map)
+        addLegend(position = c("bottomleft"),
+                  values = df_for_maps$purpose,
+                  pal = sc_color,
+                  title = "Purpose"
+        ) 
+      
+      
     })
     
     output$ziptable <- DT::renderDataTable({
