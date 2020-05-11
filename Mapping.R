@@ -14,7 +14,7 @@ library(lattice)
 
 df_for_maps <- readRDS("Data/df_for_maps.rds")
 swabs <- readRDS("Data/swabs.rds")
-nonwoven <- readRDS("Data//nonwoven.RDS")
+nonwoven <- readRDS("Data//nonwoven.rds")
 
 ### LOAD MAPPING PREREQS
 
