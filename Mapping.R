@@ -57,6 +57,7 @@ createCircleMarkersWithData <- function(map, dataSet, clusterId, group, fillColo
                                              });
     }", list(fillColor = fillColor)), "[\r\n]" , "")
   addAwesomeMarkers(map,
+                    data = dataSet,
                     popup = dataSet$popup,
                     icon = awesomeIcons(
                       icon = icon,
