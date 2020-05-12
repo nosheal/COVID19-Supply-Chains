@@ -122,7 +122,7 @@ geocoded_swabs <- origAddress %>%
     Company == "Copan" ~ "Italy", 
     TRUE ~ "USA"), 
     capacity = NA_character_) %>% 
-  select(company = Company, ownership, loc_desc, address, purpose, broad_product, specific_product, product_details, capacity, employees, sales, lat, long)
+  select(company = Company, ownership, loc_desc, address = form_address, purpose, broad_product, specific_product, product_details, capacity, employees, sales, lat, long)
 ```
 
 ## Non-Woven Fabrics
@@ -172,19 +172,13 @@ geocoded_nonwoven <- origAddress %>%
   mutate(ownership = sub('.*,\\s*', '', address), 
          capacity = NA_character_, 
          employees = NA_real_) %>% 
-  select(company = Company, ownership, loc_desc, address, purpose, broad_product, specific_product, product_details, capacity, employees, sales, lat, long)
+  select(company = Company, ownership, loc_desc, address = form_address, purpose, broad_product, specific_product, product_details, capacity, employees, sales, lat, long)
 ```
 
 # Format for maps
 
 
 ## Prepare our Data
-
-```{r}
-df_for_maps <- bind_rows(geocoded_swabs, geocoded_nonwoven)
-```
-
-We then prepare the individual data frames that house individual layers and contain relevant popup infromation. In this case we only have two sublayers: swabs and non-woven fabrics. Since we intend on adding many layers, we create a function to do this. In this document we will seperately call the function for the two layers of our map. 
 
 ```{r}
 prepare_for_maps <- function(name, df, title) {
@@ -218,6 +212,8 @@ prepare_for_maps <- function(name, df, title) {
 }
 ```
 
+We first use this function to set up our individual data layers for mapping. 
+
 ```{r}
 swabs <- prepare_for_maps(swabs, geocoded_swabs, 'swabs')
 ```
@@ -225,6 +221,13 @@ swabs <- prepare_for_maps(swabs, geocoded_swabs, 'swabs')
 ```{r}
 nonwoven <- prepare_for_maps(nonwoven, geocoded_nonwoven, 'nonwoven')
 ```
+
+We then combine these individual data frames into one final frame that will be used in our latest version of the mapping. 
+
+```{r}
+df_for_maps <- bind_rows(swabs, nonwoven)
+```
+
 
 ## Save for outputs 
 
@@ -234,15 +237,11 @@ We now save our outputs to the locations that our other files can draw from.
 
 ```{r}
 saveRDS(df_for_maps, "Data/df_for_maps.rds")
-saveRDS(swabs, "Data/swabs.rds")
-saveRDS(nonwoven, "Data/nonwoven.rds")
 ```
 
 ### For shiny integration and searching 
 
 ```{r}
 saveRDS(df_for_maps, "Leaflet_Searching/Data/df_for_maps.rds")
-saveRDS(swabs, "Leaflet_Searching/Data/swabs.rds")
-saveRDS(nonwoven, "Leaflet_Searching/Data/nonwoven.rds")
 ```
 
