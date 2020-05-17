@@ -237,6 +237,8 @@ server <- function(input, output, session) {
       g <- if (filteredDemand()$demand_id == 1){
         m %>%
           
+          setView(lng=-100.34004, lat=37.2855, zoom=5) %>%
+          
           addEsriFeatureLayer(covid_esri_url,
                               color = '#000000', 
                               weight = 0.25 , # thickness of the county outines
@@ -272,6 +274,8 @@ server <- function(input, output, session) {
                     opacity=0.8, position="bottomright")
       } else if (filteredDemand()$demand_id == 2){
         m %>%
+          
+          setView(lng=-100.34004, lat=37.2855, zoom=5) %>%
           
           addEsriFeatureLayer(covid_esri_url,
                               color = '#000000', 
