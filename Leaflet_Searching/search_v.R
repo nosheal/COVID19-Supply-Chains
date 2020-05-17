@@ -118,10 +118,6 @@ ui <- fluidPage(
                ),
                
                tabPanel("Data explorer",
-                        fluidRow(
-                                   selectInput("purpose", "Purpose", c("Purpose"="purpose", "Product" = "product"))
-                        ),
-                        
                         hr(),
                         DT::dataTableOutput("ziptable")
                )
@@ -178,7 +174,7 @@ server <- function(input, output, session) {
         #) %>% 
         # add legend (table) that shows which color represents which country of origin (color key) - bottom left (due to mini map)
         addLegend(position = c("bottomleft"),
-                  values = df_for_maps$purpose,
+                  values = filteredData()$purpose,
                   pal = sc_color,
                   title = "Purpose"
         ) 

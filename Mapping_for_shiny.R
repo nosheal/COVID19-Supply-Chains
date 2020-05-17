@@ -130,7 +130,7 @@ m <- leaflet() %>%
 marker_list <- as.vector(unique(df_for_maps$purpose)) ## define a list of individual purposes
 
 for (y in unique(df_for_maps$purpose))
-{
+{4
   map_lay <- df_for_maps %>% 
     filter(purpose == y)
   
