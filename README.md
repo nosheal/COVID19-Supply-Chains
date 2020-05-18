@@ -11,3 +11,5 @@ There are a few key files:
   * Note the difference between mapping for shiny integration and mapping independently is that the independent maps rely on the javascript grouped layer control plug in. Mapping for shiny integration solves the layering issue by calling layers from one dataframe that is dynamically filtered based on checkboxgroupinputs. 
 * Shiny integration and the live app (the code can be found [here](https://github.com/nosheal/COVID19-Supply-Chains/blob/master/Leaflet_Searching/search_v.R) and the live version can be found [here](https://nosheal.shinyapps.io/COVID19_SUPPLY_CHAINS/))
   * Shiny integration allows for a map tab as well as a data explorer tab, and will be modified to also include graphing and other analytical outputs. 
+  
+Demand layers are drawn from previously exisitng ESRI integrations. Two resources to bring in ESRI layers from can be found at [here](https://coronavirus-disasterresponse.hub.arcgis.com/#get-data) and [here](https://dlab.berkeley.edu/blog/data-and-tools-mapping-covid-19)
