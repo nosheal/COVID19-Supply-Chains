@@ -40,10 +40,10 @@ sc_color <- colorFactor(c("purple", "darkred"), domain = df_for_maps$purpose)
 df_for_maps <- df_for_maps %>% 
   mutate(icon = case_when(
     purpose == "Testing" ~ "fa-syringe", 
-    purpose == "Surgical Masks" ~ "fa-head-side-mask"),
+    purpose == "Face Masks" ~ "fa-head-side-mask"),
     map_col = case_when(
       purpose == "Testing" ~ "darkred", 
-      purpose == "Surgical Masks" ~ "purple")
+      purpose == "Face Masks" ~ "purple")
   ) 
 
 ### LOAD MAPPING PREREQS
@@ -139,16 +139,22 @@ ui <- fluidPage(
                             #leafletOutput
                             leafletOutput("mymap"),
                             #layercontrol
-                            absolutePanel(bottom = 100, left = 10,
-                                          checkboxGroupInput("purpose_select", "Select Purposes to Display", 
-                                                             choices = unique(df_for_maps$purpose), selected = "All"
+                            fluidRow(
+                              column(3, 
+                                          checkboxGroupInput("testing_select", "Testing Layers", 
+                                                             choices = unique(df_for_maps$broad_product[df_for_maps$purpose == "Testing"])
                                           )
-                            ),
-                            
-                            absolutePanel(bottom = 100, right = 10,
+                              ),
+                              column(3, 
+                                      checkboxGroupInput("masks_select", "Face Mask Layers", 
+                                                         choices = unique(df_for_maps$specific_product[df_for_maps$purpose == "Face Masks"])
+                                      )
+                              ),
+                              column(3,
                                           selectInput("demand_select", "Select Demand Layer to Display", 
                                                              choices = unique(as.character(demand$measure))
                                           )
+                              )
                             )
                             
                         )
@@ -168,8 +174,18 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   
   # Reactive expression for the data subsetted to what the user selected
+  # We deal with each supply "group" seperately and merge it back together into our final dataframe
+  # There is likely a more efficient way to do this, and this section should be revised. 
+
   filteredData <- reactive({
-    df_for_maps %>% filter(purpose %in% input$purpose_select)
+    
+    testing_data <- df_for_maps %>% 
+      filter(broad_product %in% input$testing_select)
+    masks_data <- df_for_maps %>% 
+      filter(specific_product %in% input$masks_select)
+    
+    bind_rows(testing_data, masks_data)
+    
   })
   
   filteredDemand <- reactive({

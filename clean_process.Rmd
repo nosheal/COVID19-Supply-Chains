@@ -137,7 +137,7 @@ top_nonwoven <- read_xlsx("nonwoven_us.xlsx")
 top_nonwoven <- top_nonwoven %>%
   rename(Company = `Company Name`) %>% 
   mutate(address = paste(Company, Location, sep = ", ")) %>% 
-  mutate(broad_product = "ASTM Level 2 +", specific_product = "Nonwoven Fabrics", product_details = "25+ GSM Fabric", purpose = "Surgical Masks", loc_desc = "Company HQ") %>% 
+  mutate(broad_product = "ASTM Level 2 +", specific_product = "Nonwoven Fabrics", product_details = "25+ GSM Fabric", purpose = "Face Masks", loc_desc = "Company HQ") %>% 
   rename(sales = 'Estimated Annual Revenue')
 ```
 
