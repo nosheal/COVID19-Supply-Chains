@@ -33,17 +33,26 @@ demand$demand_id <- c(0,1,2)
 
 # define colors
 
-sc_color <- colorFactor(c("purple", "darkred"), domain = df_for_maps$purpose)
+sc_color <- colorFactor(c("darkblue", "darkred"), domain = df_for_maps$purpose)
 
 
 ## Set icons and colors (one for each layer) and prepare for maps
+## Set icons and colors (one for each layer) and prepare for maps
 df_for_maps <- df_for_maps %>% 
+  mutate(specific_product = case_when( # DROP THIS COMMAND ONCE WE HAVE BETTER DATA for TESTING) 
+    purpose == "Testing" ~ "Swabs", 
+    TRUE ~ specific_product
+  )) %>% 
   mutate(icon = case_when(
     purpose == "Testing" ~ "fa-syringe", 
     purpose == "Face Masks" ~ "fa-head-side-mask"),
+    icon = case_when(specific_product == "Ear Loops" ~ "fa-ring",
+                     TRUE ~ icon),
     map_col = case_when(
       purpose == "Testing" ~ "darkred", 
-      purpose == "Face Masks" ~ "purple")
+      purpose == "Face Masks" ~ "darkblue"),
+    map_col = case_when(specific_product == "Ear Loops"  ~ "cadetblue", 
+                        TRUE ~ map_col)
   ) 
 
 ### LOAD MAPPING PREREQS
@@ -151,7 +160,7 @@ ui <- fluidPage(
                                       )
                               ),
                               column(3,
-                                          selectInput("demand_select", "Select Demand Layer to Display", 
+                                          selectInput("demand_select", "Demand Layer", 
                                                              choices = unique(as.character(demand$measure))
                                           )
                               )
@@ -236,12 +245,10 @@ server <- function(input, output, session) {
                   title = "Purpose"
         ) 
       
-      marker_list <- as.vector(unique(filteredData()$purpose)) ## define a list of individual purposes
-      
-      for (y in unique(filteredData()$purpose))
+      for (y in unique(filteredData()$specific_product))
       {
         map_lay <- filteredData() %>% 
-          filter(purpose == y)
+          filter(specific_product == y)
         
         m <- m %>% createCircleMarkersWithData(dataSet = map_lay,
                                                fillColor = map_lay$map_col[1],
@@ -288,7 +295,7 @@ server <- function(input, output, session) {
           addLegend(title="Confirmed Cases", 
                     colors=c('#0868ac','#43a2ca','#7bccc4','#bae4bc','#f0f9e8'),
                     labels=c("1000+","500-1000", "500-100", "1-100", "0"), 
-                    opacity=0.8, position="bottomright")
+                    opacity=0.8, position="bottomleft")
       } else if (filteredDemand()$demand_id == 2){
         m %>%
           
@@ -326,7 +333,7 @@ server <- function(input, output, session) {
           addLegend(title="Deaths", 
                     colors=c('#252525','#636363','#969696','#cccccc','#f7f7f7'),
                     labels=c("1000+","500-1000", "500-100", "1-100", "0"), 
-                    opacity=0.8, position="bottomright")
+                    opacity=0.8, position="bottomleft")
         
       } else {
         m
