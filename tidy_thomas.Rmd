@@ -1,0 +1,328 @@
+---
+title: "Text Analytics to Determine Product Lines"
+author: "Nikhil Kalathil"
+date: "5/28/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include == FALSE }
+library(tidyverse)
+library(tidytext)
+library(RColorBrewer)
+library(ggthemes)
+library(tm)
+```
+
+
+```{r}
+thomas_data <- readRDS("thomas_fm.RDS")
+```
+
+
+We now continue to clean this search file for analysis. In general, we can drop observations that do not have a body text. However, there are many observations that do not have sales or employees data, but do have interested data about production lines and product mixes. 
+
+For example: 
+
+```{r}
+final_data %>%  
+  filter(company == "Safeguard 19") %>% 
+  select(company, location, loc_desc, sales, employees, desc)
+
+```
+
+Specifically, we have interesting information in the description variable that we want to anayze further. Our first step is to drop totally missing observations, as we cannot get observations about them. We notice that there are a few rows with no text or. We also notice that Covid 19 is sometimes two words. 
+
+```{r}
+thomas_fm <- final_data %>% 
+  mutate(desc = str_replace(desc, "covid 19", "covid-19"))
+```
+
+
+```{r}
+thomas_fm$ID <- seq.int(nrow(thomas_fm))
+```
+
+
+#  Using Tidytext to categorize suppliers by product mix  
+
+```{r}
+thomas_text <- thomas_fm %>% 
+  unnest_tokens(word, desc)
+
+thomas_text %>% head()
+```
+
+We have created a dataset where each row is a word from the description of a face mask product supplier from the Thomasnet database. These results are limited to the Us. We are going to see if we can use text analytics to categorize specific companies by their product mix. 
+
+Based on a review of the Thomasnet output, it seems as though there is a lot of specific product information about what a given supplier provides, even if there are no details about sales or employees. 
+
+```{r}
+example <- function(data, comp) {
+  data %>% 
+    filter(company == comp) %>% 
+    select(desc)
+}
+```
+
+
+One goal will be to try and create a scale of "medical specilization". Among the 535 unique companies that our search produced, some of them specifically state that they produce N95, KN95, face masks, or other COVID-19 products. For example: 
+
+```{r}
+thomas_fm %>% 
+  example(comp = "Pacific Imports")
+```
+
+The products that other companies state that they produce are less clearly applicable to the COVID-19 response. 
+
+```{r}
+thomas_fm %>% 
+  example(comp = "Blue Beat Digital") 
+```
+
+However, this does not mean that these products are NOT useful. Thus, rather than define a binary, our goal is to attempt to determine a spectrum where we can categorize something as more directly related to the COVID-19 response, or less directly related to the COVID-19 response. 
+
+We can even attempt to define what the common product mix at each end of the spectrum is.
+
+## Begining to tidy the text
+
+We start by removing "stop words" such as "the", "of," to" and so forth. We can use a previously defined dictionary here, however we will also want to modify it to make sure to preserve some words we care about. 
+
+```{r}
+stop_words <- stop_words %>% 
+  filter(!word %in% c("apart", "aside", "beyond", "changes",  "contains", "containing", "contain", "given", "more", "needs", "nearly", "only", "otherwise", "overall", "other", "novel", "plus", "possible", "particular", "particularly", "provides", "probably", "twice")) %>% 
+  filter(lexicon == "SMART")
+```
+
+```{r}
+tidy_thomas <- thomas_text %>% 
+  anti_join(stop_words) %>% 
+  filter(word != "19") %>% 
+  mutate(word = str_replace(word, "covid", "covid-19"))
+```
+
+```{r}
+tidy_thomas %>%
+  filter(word != "masks") %>% 
+  count(word, sort = TRUE) %>%
+  filter(n > 50) %>% 
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip() + 
+  labs(y = "Count", title = "Top Words in Thomasnet Face Mask Supplier descriptions")
+```
+
+A first question we can ask is how do these "top" words differ by firms of: 
+
+1. Different Sizes based on Number of Employees 
+```{r}
+thomas_fm %>% 
+  group_by(employees) %>% 
+  count()
+```
+2. Different Annual Sales
+
+```{r}
+thomas_fm %>% 
+  group_by(sales) %>% 
+  count()
+```
+
+We acknowledge that there are greatly fewer observations with data along these two categories, but differentation may be informative. 
+
+```{r}
+tidy_emp <- tidy_thomas %>% 
+  filter(!word %in% c("masks", "include", "including", "other"), !is.na(employees)) %>% 
+  group_by(employees) %>% 
+  count(word, sort = TRUE) %>%
+  filter(n > 10) %>% 
+  mutate(word = reorder(word, n),
+         proportion = n / sum(n),
+         perc = 100*proportion) 
+```
+
+
+```{r}
+tidy_emp %>% 
+  ggplot(aes(word, n, fill = word)) +
+  geom_col() +
+  xlab(NULL) +
+  facet_wrap(~employees) +
+  coord_flip() + 
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank()) + 
+  labs(title = "Word Mentions for Suppliers by Employee Size Category", fill = "", y = "")
+```
+
+In terms of total mentions, the distribution of product descriptions by employee size category seems to be roughly equivalent. 
+
+We see that firms with 200-499 employees seem to all advertise as making face masks. 
+
+```{r}
+tidy_sales <- tidy_thomas %>% 
+  filter(!word %in% c("masks", "include", "including", "other"), !is.na(sales)) %>% 
+  group_by(sales) %>% 
+  count(word, sort = TRUE) %>%
+  filter(n > 10) %>% 
+  mutate(word = reorder(word, n),
+         proportion = n / sum(n),
+         perc = 100*proportion) 
+```
+
+```{r}
+tidy_sales %>% 
+  ggplot(aes(word, n, fill = word)) +
+  geom_col() +
+  xlab(NULL) +
+  facet_wrap(~sales) +
+  coord_flip() + 
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank()) + 
+  labs(title = "Word Mentions for Suppliers by Annual Sales Category", fill = "", y = "")
+```
+
+The distribution of product description words is a bit more differentiated by annual sales category. We see that small firms with under $1 million in annual sales have a slighty different distribution of product descriptors. 
+
+Unfortunately, niether of these dimensions of analysis offered too much revelatory information. 
+
+# An Attempt at Topic Modeling
+
+First we turn our tidy object into a document term matrix. 
+
+```{r}
+thomas_count <- tidy_thomas %>% 
+  group_by(company, word) %>% 
+  count()
+
+tidy_thomas <- left_join(tidy_thomas, thomas_count)
+```
+
+
+```{r}
+thomas_corpus <- tidy_thomas %>% 
+  cast_dtm(company, word, n)
+```
+
+```{r}
+thomas_corpus
+```
+
+
+TO CONTINUE LATER!
+
+## How many entries have capacity, or lead time information? 
+```{r}
+capacity <- thomas_fm %>% 
+  filter(str_detect(desc, fixed("capabilities", ignore_case = TRUE)) | 
+           str_detect(desc, fixed("production", ignore_case = TRUE)) |
+           str_detect(desc, fixed("per week", ignore_case = TRUE)) |
+           str_detect(desc, fixed("per month", ignore_case = TRUE)) |
+           str_detect(desc, ",000") ) %>% 
+  mutate(cap_info = 1)
+```
+
+There are 49 potential companies that we can extract some sort of actual production level information from. 
+
+```{r}
+lead_times <- thomas_fm %>% 
+  filter(str_detect(desc, fixed("lead", ignore_case = TRUE)) |
+           str_detect(desc, fixed("delivery", ignore_case = TRUE)) |
+           str_detect(desc, fixed("delay", ignore_case = TRUE)) |
+           str_detect(desc, fixed("lag", ignore_case = TRUE)) |
+           
+           str_detect(desc, fixed("weeks", ignore_case = TRUE))) %>% 
+  mutate(lead_info = 1)
+```
+
+There are 63 observations with lead_times available. What is the overlap between our three categories? 
+
+```{r}
+thomas_info <- full_join(lead_times, capacity)
+```
+
+Our next step will be to determine exactly what information we can extract from this smaller dataset. We do this manually in excel. 
+
+```{r}
+write_csv(thomas_info, "Data/thomas_info.csv")
+```
+
+
+```{r, include = FALSE}
+thomas_info_impute <- read_csv("Data/thomas_info_impute.csv")
+```
+
+
+```{r}
+thomas_info <- thomas_info_impute %>% 
+  select(c("company", "capacity", "lead_time"))
+```
+
+We now want to merge this back with our original dataset. 
+
+```{r}
+thomas_an <- left_join(thomas_fm, thomas_info, by = "company")
+```
+
+We will then search the descriptions to identify entries that
+
+1. State that they produce FDA approved artifacts
+2. State that they produce specific COVID products of interest
+3. State that they source from China
+4. Have manufacturing capabilities 
+
+
+
+```{r}
+thomas_an <- thomas_an %>% 
+  mutate(fda = str_detect(desc, fixed(" fda ", ignore_case = TRUE)),
+         covid_prod = str_detect(desc, fixed("ppe", ignore_case = TRUE)) | 
+           str_detect(desc, fixed("respirator", ignore_case = TRUE)) |
+           str_detect(desc, fixed("N95", ignore_case = TRUE)) |
+           str_detect(desc, fixed("medical", ignore_case = TRUE)) |
+           str_detect(desc, fixed("surgical", ignore_case = TRUE)) |
+           str_detect(desc, fixed("ASTM", ignore_case = TRUE)) |
+           str_detect(desc, fixed(" 3m ", ignore_case = TRUE)) |
+           str_detect(desc, fixed("poly", ignore_case = TRUE)) |
+           str_detect(desc, fixed("ANSI", ignore_case = TRUE)) |
+           str_detect(desc, fixed("ASTM", ignore_case = TRUE)) |
+           str_detect(desc, fixed("AAMI", ignore_case = TRUE)),
+         china = str_detect(desc, fixed("China", ignore_case = TRUE)),
+         manf = str_detect(loc_desc, fixed("Manufacturer", ignore_case = TRUE))
+         )
+           
+```
+
+```{r}
+thomas_an %>% 
+  count(fda)
+```
+
+```{r}
+thomas_an %>% 
+  count(covid_prod)
+```
+
+```{r}
+thomas_an %>% 
+  count(china)
+```
+
+```{r}
+thomas_an %>% 
+  count(manf)
+```
+
+```{r}
+thomas_an %>% 
+  group_by(capacity) %>% 
+  count()
+```
+
