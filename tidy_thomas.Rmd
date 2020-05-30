@@ -23,9 +23,82 @@ library(tm)
 ```
 
 
+# Introduction
+
+This document will clean and process data webscraped from Thomasnet to: 
+
+* Differentiate product layers 
+* Differentiate supply types
+* Determine FDA compliance status 
+* Determine distribution of COVID-19 resposne
+
+
+## Preparing the Data 
+
+We spend our first section preparing data that we have. 
+
+### Face Masks and Respirators 
+
+Our first task is to distinguish the difference in overlap between our "Face Masks" search and our" "Respirators" search. 
+
+To do this we import both data sets, combine them, and then filter down to distinct company rows. 
+
 ```{r}
-thomas_data <- readRDS("thomas_fm.RDS")
+thomas_fm <- readRDS("Data/thomas_fm_05292020.RDS")
+
+thomas_fm %>% 
+  count() 
 ```
+
+```{r}
+thomas_resp <- readRDS("Data/thomas_resp_05292020.RDS")
+
+thomas_resp %>% 
+  count()
+```
+
+```{r}
+thomas_data <- bind_rows(thomas_resp, thomas_fm) %>% 
+  rename(search_prod = purpose, 
+         broad_product = specific_product)
+```
+
+We find that we can identify unique entries based on a combination of `company, desc, location`. 
+
+```{r}
+thomas_data %>% 
+  group_by(company, desc, location) %>% 
+  count() %>% 
+  group_by(n) %>% 
+  count()
+```
+
+Surprisingly, we find that there are only 78 categories that overlapped between these searches! Once we analyze the actual supplier descriptions further it wil be interesting to see how topics differentiation between the respirator search query (as identified in the specific_product variable), and the face mask search. 
+
+```{r}
+thomas_double <- thomas_data %>% 
+  group_by(company, desc) %>% 
+  count() %>% 
+  filter(n == 2) %>% 
+  mutate(search_prod = "Face Masks and N95 Respirators", broad_product = "End Product") %>% 
+  select(-n)
+```
+
+```{r}
+thomas_clean <- anti_join(thomas_data, thomas_double, by = c("company", "desc")) %>% 
+  bind_rows(thomas_double)
+```
+
+
+We now have: 
+
+```{r}
+thomas_clean %>% 
+  group_by(search_prod) %>% 
+  count()
+```
+
+### Further Cleaning
 
 
 We now continue to clean this search file for analysis. In general, we can drop observations that do not have a body text. However, there are many observations that do not have sales or employees data, but do have interested data about production lines and product mixes. 
@@ -33,29 +106,422 @@ We now continue to clean this search file for analysis. In general, we can drop 
 For example: 
 
 ```{r}
-final_data %>%  
+thomas_clean %>%  
   filter(company == "Safeguard 19") %>% 
   select(company, location, loc_desc, sales, employees, desc)
-
 ```
 
-Specifically, we have interesting information in the description variable that we want to anayze further. Our first step is to drop totally missing observations, as we cannot get observations about them. We notice that there are a few rows with no text or. We also notice that Covid 19 is sometimes two words. 
+Specifically, we have interesting information in the description variable that we want to anayze further. Our first step is to drop totally missing observations, as we cannot get observations about them. We notice that there are a few rows with no text or. We also notice that Covid 19 and some other descriptors of interest are sometimes two words. 
 
 ```{r}
-thomas_fm <- final_data %>% 
-  mutate(desc = str_replace(desc, "covid 19", "covid-19"))
+thomas_clean <- thomas_clean %>% 
+  mutate(desc = str_replace(desc, fixed("covid 19", ignore_case = TRUE), "covid-19"), 
+         desc = str_replace(desc, fixed("non woven", ignore_case = TRUE), "non-woven"), 
+         desc = str_replace(desc, fixed("melt blown", ignore_case = TRUE), "melt-blown"),
+         desc = str_replace(desc, fixed("3 ply", ignore_case = TRUE), "3-ply"),
+         desc = str_replace(desc, fixed("3ply", ignore_case = TRUE), "3-ply"),
+         desc = str_replace(desc, fixed("clean room", ignore_case = TRUE), "cleanroom") 
+         ) %>% 
+  filter(str_length(desc) > 2)
 ```
 
 
 ```{r}
-thomas_fm$ID <- seq.int(nrow(thomas_fm))
+thomas_clean$ID <- seq.int(nrow(thomas_clean))
 ```
 
 
-#  Using Tidytext to categorize suppliers by product mix  
+### Structuring the Data
+
+We now begin our process of structuring the data. Our ulimtate goal is to segment the combined respirator and face mask data into the following groups: 
+
+End Products: 
+* Respirators
+* Face Masks
+* Cloth Masks 
+
+For this grouping, in the data we will define producers who can produce both respirators and face masks seperately. In maps, they will appear in both layers. 
+
+Cloth masks are defined as companies that do not produce masks that meet any additional medical classifications.
+
 
 ```{r}
-thomas_text <- thomas_fm %>% 
+thomas_struc <- thomas_clean %>% 
+  mutate(resp = case_when(
+    str_detect(desc, fixed("respirator", ignore_case = TRUE)) | 
+      str_detect(desc, fixed("N95", ignore_case = TRUE)) | 
+      str_detect(desc, fixed("cleanroom", ignore_case = TRUE)) ~ "Respirator"),
+    face_mask = case_when(
+      str_detect(desc, fixed("medical", ignore_case = TRUE)) |
+        str_detect(desc, fixed("surgical", ignore_case = TRUE)) |
+        str_detect(desc, fixed("dental", ignore_case = TRUE)) |
+        str_detect(desc, fixed("veterinary", ignore_case = TRUE)) |
+        str_detect(desc, fixed("dust mask", ignore_case = TRUE)) |
+        str_detect(desc, fixed("ISO", ignore_case = FALSE)) |
+        str_detect(desc, fixed("ASTM", ignore_case = FALSE))|
+        str_detect(desc, fixed("ANSI", ignore_case = FALSE)) |
+        str_detect(desc, fixed("AAMI", ignore_case = FALSE)) |
+        str_detect(desc, fixed("level ", ignore_case = TRUE)) |
+        str_detect(desc, "PPE") |
+        str_detect(desc, fixed("non-woven", ignore_case = FALSE)) |
+        str_detect(desc, fixed("3M", ignore_case = FALSE)) |
+        str_detect(desc, fixed("3-ply", ignore_case = FALSE)) |
+        str_detect(desc, fixed("non-woven", ignore_case = FALSE)) ~ "Face Mask")
+  )
+           
+```
+
+We use the following quality checks:
+
+```{r, eval = FALSE}
+thomas_struc %>% 
+  filter(is.na(resp), is.na(face_mask)) %>% 
+  view()
+```
+
+```{r, eval = FALSE}
+thomas_struc %>% 
+  filter(search_prod == "Face Masks", is.na(face_mask), !is.na(resp)) %>% 
+  view()
+```
+
+
+```{r, eval = FALSE}
+thomas_struc %>% 
+  filter(search_prod == "Respirators", !is.na(face_mask), is.na(resp)) %>% 
+  view()
+```
+
+We see that there are some entries that supply face masks that are not registered as haveing provided face masks. We cannot add "face mask" to our defintion of face mask because that would include some cloth masks that do not meet our standards. Thus, we perform the following correction: 
+
+```{r}
+thomas_struc <- thomas_struc %>% 
+  mutate(face_mask = case_when(
+    (str_detect(desc, fixed("face mask", ignore_case = TRUE)) | str_detect(desc, fixed("disposable", ignore_case = TRUE)))
+                  & !is.na(resp) & is.na(face_mask) ~ "Face Mask", 
+    TRUE ~ face_mask 
+  ))
+```
+
+
+```{r}
+search_match <- thomas_struc %>% 
+  group_by(search_prod) %>% 
+  count(resp, face_mask)
+
+search_match
+```
+
+After performing another set of quality checks to make sure our filters are effective, we are reasonably confident that these definitions segment our data appropriately.
+
+We can now define a category of cloth mask (that is separate from either respirators or face masks). 
+
+```{r}
+thomas_struc <- thomas_struc %>% 
+  mutate(cloth_mask = case_when(
+    (str_detect(desc, fixed("masks", ignore_case = TRUE))|
+       str_detect(desc, fixed("face mask", ignore_case = TRUE)) | str_detect(desc, fixed("cloth mask", ignore_case = TRUE)) |
+       str_detect(desc, fixed("sewn", ignore_case = TRUE)))
+       & is.na(resp) & is.na(face_mask) ~ "Cloth Mask"))
+```
+
+```{r}
+thomas_struc %>% 
+  filter(cloth_mask == "Cloth Mask") %>% 
+  count()
+```
+
+We can now create a specific product variable based on these new divisions. 
+
+```{r}
+thomas_struc <- thomas_struc %>% 
+  mutate(specific_product = case_when( 
+    resp == "Respirator" & is.na(face_mask) ~ "Respirators Only", 
+    face_mask == "Face Mask" & is.na(resp) ~ "Face Masks Only", 
+    resp == "Respirator" & face_mask == "Face Mask" ~ "Respirators and Face Masks", 
+    cloth_mask == "Cloth Mask" ~ "Cloth Masks"))
+```
+
+```{r}
+thomas_struc %>% 
+  group_by(specific_product) %>% 
+  count() %>% 
+  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
+  geom_col() + 
+  geom_label(show.legend = FALSE) +
+  theme_bw() + 
+  labs(title = "Number of Suppliers by Specific Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "Total N = 1226", fill = "Specific Product") + 
+  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
+```
+
+The last thing we will do is add a flag for if the company mentions that they are responding to COVID-19. 
+
+```{r}
+thomas_struc <- thomas_struc %>% 
+  mutate(covid_desc = str_detect(desc, fixed("covid", ignore_case = TRUE)) | str_detect(desc, fixed("coronavirus", ignore_case = TRUE)))
+```
+
+One thing we are intersted in is the overlap between companies registered in Thomasnet as responding to COVID-19 and companies that state covid-19 but are not registered. 
+
+```{r}
+thomas_struc %>% 
+  filter(covid_19 == "COVID-19 Response") %>% 
+  group_by(covid_19, specific_product) %>% 
+  count(covid_desc)
+```
+
+We will need to determine which categories should toggle as "part of the COVID-19 response."
+
+```{r}
+thomas_struc %>% saveRDS("Data/resp_masks_struc.RDS")
+```
+
+
+## Analyzing Supplier Types 
+
+We now turn to an anlysis of supplier types. Our goal is to differentiate between the different supplier types. 
+
+
+```{r}
+thomas_struc %>% 
+  group_by(loc_desc) %>% 
+  count() 
+```
+
+I propose the following breakdown: 
+
+* Primary Manufacturer (primary purpose is manufacturer)
+* Secondary Manufacturer (manufacturer not primary purpose, but is a purpose)
+* Distributor (distributor as primary or secondary purpose, no manufacturing) 
+* Other (not a distributor or a manufacturer)
+
+```{r}
+thomas_struc <- thomas_struc %>% 
+  mutate(broad_loc = case_when(
+    str_detect(loc_desc, "Manufacturer\\*") ~ "Primary Manufacturer", 
+    str_detect(loc_desc, "Manufacturer") & str_detect(loc_desc, "Manufacturer\\*", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep", negate = TRUE) ~ "Secondary Manufacturer",
+    str_detect(loc_desc, "Distributor") | str_detect(loc_desc, "Manufacturers' Rep*") ~ "Distributor", 
+    str_detect(loc_desc, "Manufacturer", negate = TRUE) & str_detect(loc_desc, "Manufacturer\\*", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep", negate = TRUE) & 
+      str_detect(loc_desc, "Distributor", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep*", negate = TRUE) ~ "Other"))
+```
+
+```{r}
+thomas_struc %>% 
+  group_by(broad_loc) %>% 
+  count()
+```
+
+```{r}
+sup_type <- thomas_struc %>%
+  filter(!is.na(specific_product)) %>% 
+  group_by(broad_loc, specific_product) %>% 
+  count() %>% 
+  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
+  geom_col() + 
+  facet_wrap(~broad_loc) + 
+  geom_label(show.legend = FALSE) +
+  theme_bw() + 
+  labs(title = "Number of Suppliers by Specific Product Type", subtitle = "by Supplier Type, Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
+  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
+```
+
+An immediate question that we are interested in is: for face masks and respirators, what percent of US firms are manufacturers compared to distributors? 
+
+```{r}
+thomas_struc %>%
+  filter(!is.na(specific_product)) %>% 
+  group_by(broad_loc, specific_product) %>% 
+  count() %>% 
+  ungroup() %>% 
+  group_by(specific_product) %>% 
+  mutate(prop = n / sum (n)) %>%
+  filter(specific_product %in% c("Respirators and Face Masks", "Face Masks Only", "Respirators Only", "Cloth Masks")) %>% 
+  mutate(lab_prop = round(case_when(
+    broad_loc == "Primary Manufacturer" ~ prop
+  ),2)) %>% 
+  ggplot(aes(specific_product, prop, fill = broad_loc, label = lab_prop)) +
+  geom_col(position = "stack") + 
+  geom_label(show.legend = FALSE) + 
+  scale_fill_brewer(palette = "Set3", na.value = "grey") + 
+  coord_flip() +
+  theme_bw() + 
+  labs(title = "Percent of US Suppliers of Critical Technologies, \nby Supplier Type", subtitle = "Technology = Masks, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
+```
+
+## Analyzing Capacity and Lead Time Data: 
+
+The key question we try and answer here is: what do we have available? 
+
+We now turn to an analysis of what information about capacity and lead time we can extract from our dataset. 
+
+```{r}
+capacity <- thomas_struc %>% 
+  filter(str_detect(desc, fixed("capabilities", ignore_case = TRUE)) | 
+           str_detect(desc, fixed("production", ignore_case = TRUE)) |
+           str_detect(desc, fixed("per week", ignore_case = TRUE)) |
+           str_detect(desc, fixed("per month", ignore_case = TRUE)) |
+           str_detect(desc, fixed("million", ignore_case = TRUE)) |
+           str_detect(desc, ",000") ) %>% 
+  mutate(cap_info = 1)
+```
+
+There are 106 potential companies that we can extract some sort of actual production level information from. 
+
+```{r}
+lead_times <- thomas_struc %>% 
+  filter(str_detect(desc, fixed("lead", ignore_case = TRUE)) |
+           str_detect(desc, fixed("delivery", ignore_case = TRUE)) |
+           str_detect(desc, fixed("delay", ignore_case = TRUE)) |
+           str_detect(desc, fixed("lag", ignore_case = TRUE)) |
+           str_detect(desc, fixed("ship", ignore_case = TRUE)) |
+           
+           str_detect(desc, fixed("weeks", ignore_case = TRUE))) %>% 
+  mutate(lead_info = 1)
+```
+
+There are 149 observations with lead_times available. What is the overlap between our three categories? 
+
+```{r}
+thomas_info <- bind_rows(lead_times, capacity) 
+
+cap_lead <- thomas_info %>% 
+  group_by(company, location, loc_desc, broad_loc, desc, specific_product) %>% 
+  count()
+```
+
+```{r}
+cap_lead %>% 
+  group_by(n) %>% 
+  count()
+```
+
+There are 218 observations that we have potential information for either capacity or lead time, and 37 observations that we have potential information on both of them for. 
+
+Our next step will be to determine exactly what information we can extract from this smaller dataset. We do this manually in excel. 
+
+```{r, eval = FALSE}
+write_csv(cap_lead, "Data/cap_lead.csv")
+```
+
+
+```{r, include = FALSE}
+cap_lead_impute <- read_csv("Data/cap_lead_impute.csv")
+```
+
+```{r}
+cap_info <- cap_lead_impute %>% 
+  filter(!is.na(product_capacity))
+```
+
+
+```{r}
+cap_info %>% 
+  group_by(specific_product) %>% 
+  count()
+```
+
+```{r}
+cap_info %>% 
+  group_by(broad_loc) %>% 
+  count()
+```
+
+```{r}
+stock_info <- cap_lead_impute %>% 
+  filter(!is.na(stock))
+```
+
+```{r}
+stock_info %>% 
+  group_by(broad_loc) %>% 
+  count()
+```
+
+```{r}
+lead_info <- cap_lead_impute %>% 
+  filter(!is.na(lead_time)) 
+```
+
+```{r}
+lead_info %>% 
+  group_by(lead_time) %>% 
+  count() %>% 
+  filter(n > 3) %>% 
+  ggplot(aes(lead_time, n))+
+  geom_col() + 
+  labs(title = "Most Frequent Lead Times", x = "", y = "") + 
+  theme_bw()
+```
+
+
+```{r}
+lead_info %>% 
+  group_by(lead_time, broad_loc) %>% 
+  filter(broad_loc %in% c("Distributor", "Primary Manufacturer")) %>% 
+  count() %>% 
+  filter(n > 1) %>% 
+  ggplot(aes(lead_time, n))+
+  geom_col()+
+  coord_flip()+
+  facet_wrap(~broad_loc) + 
+  labs(title = "Comparisson of Lead Time Data", subtitle = "for Distributors and Primary Manufacturers", y = "", x = "") + 
+  theme_bw()
+```
+
+```{r}
+prod_lead <- lead_info %>% 
+  filter(!is.na(specific_product)) %>% 
+  group_by(lead_time, specific_product) %>% 
+  count() %>% 
+  filter(n > 1) %>% 
+  ggplot(aes(lead_time, n))+
+  geom_col()+
+  coord_flip()+
+  facet_wrap(~specific_product) + 
+  labs(title = "Comparisson of Lead Time Data", subtitle = "by Specific Product", y = "", x = "") + 
+  theme_bw()
+```
+
+
+```{r}
+cap_lead <- cap_lead_impute %>% 
+  select(c("company", "desc", product_capacity, lead_time, stock))
+```
+
+We now want to merge this back with our original dataset. 
+
+```{r}
+thomas_an <- left_join(thomas_struc, cap_lead)
+```
+
+This final dataset is ready for mapping. 
+
+```{r}
+saveRDS(thomas_an, "fm_resp.RDS")
+```
+
+### Checking Validity of Product Modeling Possibilities 
+
+```{r}
+thomas_struc %>% 
+  filter(str_detect(desc, fixed("Capabilities include", ignore_case = TRUE)) |
+           str_detect(desc, fixed("Our masks are", ignore_case = TRUE)) |
+           str_detect(desc, fixed("We offer", ignore_case = TRUE)) |
+           str_detect(desc, fixed("sq ft", ignore_case = TRUE)) | 
+           str_detect(desc, fixed("services include", ignore_case = TRUE)) |
+           str_detect(desc, fixed("services offered", ignore_case = TRUE)) 
+         ) %>% 
+  count()
+```
+
+
+# Using Tidytext to Model Differences Between Supplier Types  
+
+```{r}
+thomas_text <- thomas_struc %>% 
   unnest_tokens(word, desc)
 
 thomas_text %>% head()
@@ -74,8 +540,6 @@ example <- function(data, comp) {
 ```
 
 
-One goal will be to try and create a scale of "medical specilization". Among the 535 unique companies that our search produced, some of them specifically state that they produce N95, KN95, face masks, or other COVID-19 products. For example: 
-
 ```{r}
 thomas_fm %>% 
   example(comp = "Pacific Imports")
@@ -88,9 +552,7 @@ thomas_fm %>%
   example(comp = "Blue Beat Digital") 
 ```
 
-However, this does not mean that these products are NOT useful. Thus, rather than define a binary, our goal is to attempt to determine a spectrum where we can categorize something as more directly related to the COVID-19 response, or less directly related to the COVID-19 response. 
-
-We can even attempt to define what the common product mix at each end of the spectrum is.
+However, this does not mean that these products are NOT useful.
 
 ## Begining to tidy the text
 
@@ -98,9 +560,20 @@ We start by removing "stop words" such as "the", "of," to" and so forth. We can 
 
 ```{r}
 stop_words <- stop_words %>% 
-  filter(!word %in% c("apart", "aside", "beyond", "changes",  "contains", "containing", "contain", "given", "more", "needs", "nearly", "only", "otherwise", "overall", "other", "novel", "plus", "possible", "particular", "particularly", "provides", "probably", "twice")) %>% 
+  filter(!word %in% c("beyond", "changes",  "contains", "containing", "contain", "nearly", "only", "novel", "plus", "possible", "particular", "particularly", "provides", "probably")) %>% 
   filter(lexicon == "SMART")
 ```
+
+We also create a list of "product" words that tell us useful information but do not allow us much differentiation between groups. 
+
+
+```{r}
+product_words <- as.data.frame(c("covid", "coronavirus", "N95", "KN95", "mask", "masks", "cloth", "surgical", "medical", "ppe", "disposable", "19"))
+
+colnames(product_words) <- "word"
+```
+
+
 
 ```{r}
 tidy_thomas <- thomas_text %>% 
