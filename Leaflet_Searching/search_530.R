@@ -54,7 +54,8 @@ df_for_maps <- df_for_maps %>%
   )
 
 df_for_maps <- df_for_maps %>% 
-  filter(company != "Wurzburg", company != "Wurzburg, Inc.") %>% 
+  filter(company != "Wurzburg", company != "Wurzburg, Inc.",
+         company != "Cinder & Sky, Inc.") %>% 
   mutate(group = if_else(is.na(group), "Missing", group))
 
 
@@ -150,7 +151,7 @@ ui <- fluidPage(
                             fluidRow(
                               column(3, 
                                           checkboxGroupInput("end_select", "End Product", 
-                                                             choices = unique(df_for_maps$specific_product[df_for_maps$broad_product == "End Product"])
+                                                             choices = unique(df_for_maps$specific_product[df_for_maps$broad_product == "End Product"]), selected = c("Respirators Only", "Respirators and Face Masks", "Face Masks Only")
                                           )
                               ),
                               column(3, 
@@ -172,7 +173,7 @@ ui <- fluidPage(
                                           )
                               ),
                               column(2, 
-                                     checkboxGroupInput("covid_select", "Participating in COVID-19 Response?", 
+                                     checkboxGroupInput("covid_select", "Affirmatively Participating in COVID-19 Response?", 
                                                         choices = unique(df_for_maps$covid_resp), selected = c("Yes", "No")
                                      )
                               )
@@ -187,14 +188,20 @@ ui <- fluidPage(
                         div(class="outer",
                             
                             #leafletOutput
-                            leafletOutput("elinamap")
+                            leafletOutput("elinamap"),
+                            absolutePanel(bottom = 10, right = 10,
+                                          "Map in progress."
+                            )
                         )
                ),
                tabPanel("Ventilators",
                         div(class="outer",
                             
                             #leafletOutput
-                            leafletOutput("afonsomap")
+                            leafletOutput("afonsomap"),
+                            absolutePanel(bottom = 10, right = 10,
+                                          "Map in progress."
+                            )
                         )
                )
     )
