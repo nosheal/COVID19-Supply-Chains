@@ -1,0 +1,316 @@
+---
+title: "Preparing the Domestic Mask Supply Chain for Mapping"
+author: "Nikhil Kalathil"
+date: "5/11/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, include = FALSE}
+#install.packages('ggmap', 'RJSONIO')
+library(tidyverse)
+library(ggmap)
+library(leaflet)
+library(leaflet.extras)
+library(htmltools)
+library(htmlwidgets)
+library(RJSONIO)
+library(readxl)
+library(widgetframe)
+```
+
+This documentuses previously defined procedures for geolocating and structuring to prepare data for the domestic Mask supply chain from Thomasnet. Before we can map our data we need to clean and structure it. 
+
+We have three data frames to clean and join: `nolatex`, `nonwoven`, and `fm_resp` (which in turn relies on `resp` and `thomas_fm`). Of these, nonlatex and nonwoven need to first be cleaned by broad location category. 
+
+We must then deal with observations with missing locations. Some of these observations are stores in secondary levels that we will have to determine how to investigate. 
+
+## Cleaning the Data (preprocessing)
+
+
+```{r}
+nonwoven <- readRDS("Data/nonwoven_05302020.RDS")
+nolatex <- readRDS("Data/nolatex_05302020.RDS")
+```
+
+Based on a manual review of the data in these searches, we don't have as much a need to refine our product definitions and categories. Since we have already dealt with duplicates, all that remains is to define the broad location type. 
+
+```{r}
+int_prod <- bind_rows(nonwoven, nolatex)
+```
+
+
+```{r}
+int_prod_struc <- int_prod %>% 
+  mutate(broad_loc = case_when(
+    str_detect(loc_desc, "Manufacturer\\*") ~ "Primary Manufacturer", 
+    str_detect(loc_desc, "Manufacturer") & str_detect(loc_desc, "Manufacturer\\*", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep", negate = TRUE) ~ "Secondary Manufacturer",
+    str_detect(loc_desc, "Distributor") | str_detect(loc_desc, "Manufacturers' Rep*") ~ "Distributor", 
+    str_detect(loc_desc, "Manufacturer", negate = TRUE) & str_detect(loc_desc, "Manufacturer\\*", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep", negate = TRUE) & 
+      str_detect(loc_desc, "Distributor", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep*", negate = TRUE) ~ "Other"))
+```
+
+```{r}
+int_prod_struc %>% 
+  group_by(specific_product) %>% 
+  count()
+```
+
+
+```{r}
+saveRDS(int_prod_struc, "Data/int_prod.RDS")
+```
+
+## Merge with End Products  
+
+```{r}
+resp_fm <- readRDS("Data/fm_resp.RDS")
+```
+
+```{r}
+us_supply <- bind_rows(resp_fm, int_prod_struc) %>% 
+  mutate(broad_product = str_replace(broad_product, "End-Product", "End Product"))
+```
+
+```{r}
+us_supply %>% 
+  group_by(broad_product) %>% 
+  count()
+```
+
+```{r}
+us_supply %>% 
+  group_by(specific_product) %>% 
+  count()
+```
+
+At this point, we will presume that it is safe to drop the NA points. While they may be useful for our text analysis purposes, for the sake of mapping they are not that useful. 
+
+```{r}
+us_supply <- us_supply %>% 
+  filter(!is.na(specific_product))
+```
+
+## Clean Location
+
+We have a problem. Entries with multiple locations were scraped as "Multiple Locs, NA". 
+
+These suppliers had information that was difficult to access through Thomasnet. Ultimately, the next stage will be to manually fix these entries, if no automated solution is available. 
+
+```{r}
+us_supply_tot <- us_supply %>% 
+  group_by(specific_product) %>% 
+  count() %>% 
+  rename(total = n)
+
+us_supply <- left_join(us_supply, us_supply_tot)
+```
+
+
+```{r}
+mult_locs <- us_supply %>% 
+  filter(location == "Multiple Locs, NA")
+```
+
+```{r}
+mult_locs %>% 
+  group_by(specific_product, total) %>% 
+  count() %>% 
+  mutate(perc = 100*round(n/total, 3))
+```
+
+We see that we loose roughly 14% of our data by filtering out entries with multiple locations. This will remain a priority item to address. 
+
+```{r}
+us_supply_maps <- anti_join(us_supply, mult_locs)
+```
+
+# Geolocating
+
+## Swabs
+
+We then begin the process of geocoding. We will use [Google's geolocating service](https://developers.google.com/maps/documentation/geocoding/intro) to process our geolocation requests. To use this service, we need to get an [API key](https://developers.google.com/maps/documentation/geocoding/get-api-key)
+
+```{r, echo = FALSE, Include = FALSE}
+api_key <- c("YOUR_KEY")
+```
+
+We define our function, which will take an address as an input and output a latitude and longitude result. 
+
+```{r}
+geocodeAddress <- function(address) {
+  require(RJSONIO)
+  url <- "https://maps.googleapis.com/maps/api/geocode/json?address="
+  url <- URLencode(paste(url, address, sep = ""))
+  url <- URLencode(paste(url, "&key=", api_key, sep = ""))
+  x <- fromJSON(url, simplify = FALSE)
+  print(x$status)
+  if (x$status == "OK") {
+    out <- c(x$results[[1]]$geometry$location$lng,
+             x$results[[1]]$geometry$location$lat,
+             x$results[[1]]$formatted_address)
+  } else {
+    out <- NA
+  }
+  Sys.sleep(0.2)  # API only allows 5 requests per second
+  out
+}
+```
+
+We now clean and prepare our data for geocoding. 
+
+```{r}
+us_supply_maps <- us_supply_maps %>% 
+   mutate(address = paste(company, location, sep = ", "))
+```
+
+Now we loop through the addresses to get the latitude and longitude of each address and add it to the original address data frame in the  new columns lat and long. 
+
+```{r}
+origAddress <- us_supply_maps
+```
+
+
+```{r}
+for(i in 1:nrow(origAddress))
+{
+  result <- geocodeAddress(origAddress$address[i])
+  origAddress$long[i] <- as.numeric(result[1])
+  origAddress$lat[i] <- as.numeric(result[2])
+  origAddress$form_address[i] <- as.character(result[3])
+
+}
+```
+
+We immediately save these results. 
+
+```{r}
+saveRDS(origAddress, "geocoded_5302020")
+```
+
+Let us see how well we did. 
+
+
+```{r}
+us_supply_geocoded <- origAddress %>% 
+  mutate(lat = case_when(
+    company == "Consolidated Cordage Corporation" ~ 26.3454374, 
+    TRUE ~ lat), 
+    long = case_when(
+      company == "Consolidated Cordage Corporation" ~ -80.132758, 
+      TRUE ~ long
+    ), 
+    ownership = "USA")
+```
+
+
+```{r}
+us_supply_geocoded %>% 
+  filter(is.na(lat)) %>% 
+  count()
+```
+Fortunately, again, out of our 1167 observations, only 70 return as with an invalid address. We add this to the same task as imputing multiple location data. 
+
+Save this as a new object to prepare for leaflet plotting. In doing so we want to define as identifying factors for this layer as possible. We want our final object to have the following format: 
+
+* Company Name
+* Country of Ownership / Headquarters
+* Broad Supplier Type (Primary Manufacturer, Distributor, etc.) 
+* For Each Facility
+  * Address
+  * COVID-Response
+  * Broad Product Type (end product, intermediary product)
+  * Specfic Product (face masks, nonwoven fabrics, etc)
+  * Product Details (Thomasnet supplier description)
+  * Capacity (if available )
+  * Number of Employees (if available)
+  * Annual Sales (if available)
+  
+```{r}
+us_supply_geocoded <- us_supply_geocoded %>%
+  filter(!is.na(lat)) %>% 
+  mutate(covid_resp = case_when((covid_19 == "COVID-19 RESPONSE" | covid_desc == TRUE | str_detect(desc, fixed("medical", ignore_case = TRUE))|
+                                   str_detect(desc, fixed("surgical", ignore_case = TRUE))|
+                                   str_detect(desc, fixed("hospital", ignore_case = TRUE))) ~ "Yes", 
+                                TRUE ~ "No"))
+```
+
+```{r}
+us_supply_geocoded %>% 
+  group_by(covid_resp) %>% 
+  count()
+```
+
+
+# Format for maps
+
+
+## Prepare our Data
+
+```{r}
+prepare_for_maps <- function(name, df) {
+  name <- df %>% 
+    mutate(layerId = paste(broad_loc, row_number(), sep = '.'),
+                      popup = paste("Company Name:",
+                                    df$company, "<br>",
+                                    "Country of Ownership:",
+                                    df$ownership, "<br>",
+                                    "Currently Participating in COVID-19 Response?", 
+                                    df$covid_resp, "<br>",
+                                    "Company Type:", 
+                                    df$broad_loc, "<br>",
+                                    "Address:", 
+                                    df$address, "<br>",
+                                    "Broad Product:", 
+                                    df$broad_product, "<br>",
+                                    "Specific Product:", 
+                                    df$specific_product, "<br>",
+                                    "Capacity:", 
+                                    df$product_capacity, "<br>",
+                                    "Lead Times:",
+                                    df$lead_time, "<br>",
+                                    "Production Details:", 
+                                    df$desc, "<br>",
+                                    "Number of Employees:", 
+                                    df$employees, "<br>",
+                                    "Annual Sales:", 
+                                    df$sales, "<br>"
+                                    ), 
+           group = broad_loc)
+  return(name)
+}
+```
+
+We first use this function to set up our individual data layers for mapping. 
+
+```{r}
+
+df_for_maps <- prepare_for_maps(df_for_maps, us_supply_geocoded)
+```
+
+## Save for outputs 
+
+We now save our outputs to the locations that our other files can draw from. 
+
+### For mapping output only
+
+```{r}
+saveRDS(df_for_maps, "Data/df_for_maps.rds")
+```
+
+### For shiny integration and searching 
+
+```{r}
+saveRDS(df_for_maps, "Leaflet_Searching/Data/df_for_maps.rds")
+```
+

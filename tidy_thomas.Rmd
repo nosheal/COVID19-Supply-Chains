@@ -243,6 +243,11 @@ thomas_struc <- thomas_struc %>%
 ```
 
 ```{r}
+my_pal <- c("cadetblue", "darkblue", "green", "darkgreen", "darkgrey")
+```
+
+
+```{r}
 thomas_struc %>% 
   group_by(specific_product) %>% 
   count() %>% 
@@ -250,7 +255,7 @@ thomas_struc %>%
   geom_col() + 
   geom_label(show.legend = FALSE) +
   theme_bw() + 
-  labs(title = "Number of Suppliers by Specific Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "Total N = 1226", fill = "Specific Product") + 
+  labs(title = "Number of Suppliers by Specific End Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "Total N = 1226", fill = "Specific Product") + 
   theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
 ```
 
@@ -267,6 +272,13 @@ One thing we are intersted in is the overlap between companies registered in Tho
 thomas_struc %>% 
   filter(covid_19 == "COVID-19 Response") %>% 
   group_by(covid_19, specific_product) %>% 
+  count(covid_desc)
+```
+
+```{r}
+thomas_struc %>% 
+  filter(is.na(covid_19)) %>% 
+  group_by(specific_product) %>% 
   count(covid_desc)
 ```
 
@@ -324,7 +336,7 @@ sup_type <- thomas_struc %>%
   facet_wrap(~broad_loc) + 
   geom_label(show.legend = FALSE) +
   theme_bw() + 
-  labs(title = "Number of Suppliers by Specific Product Type", subtitle = "by Supplier Type, Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
+  labs(title = "Number of Suppliers by Specific End Product Type", subtitle = "by Supplier Type, Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
   theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
 ```
 
@@ -348,7 +360,49 @@ thomas_struc %>%
   scale_fill_brewer(palette = "Set3", na.value = "grey") + 
   coord_flip() +
   theme_bw() + 
-  labs(title = "Percent of US Suppliers of Critical Technologies, \nby Supplier Type", subtitle = "Technology = Masks, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
+  labs(title = "Percent of US Suppliers of End Products, \nby Supplier Type", subtitle = "Technology = Masks, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
+```
+
+
+### Intermediary Products
+
+We are interested in performing a similar analysis on intermediary products. 
+
+```{r}
+int_prod <- readRDS("Data/int_prod.RDS")
+```
+
+```{r}
+int_prod %>% 
+  group_by(specific_product) %>% 
+  count() %>% 
+  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
+  geom_col() + 
+  geom_label(show.legend = FALSE) +
+  theme_bw() + 
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Number of Suppliers by Intermediary Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
+  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
+```
+
+```{r}
+int_prod %>%
+  filter(!is.na(specific_product)) %>% 
+  group_by(broad_loc, specific_product) %>% 
+  count() %>% 
+  ungroup() %>% 
+  group_by(specific_product) %>% 
+  mutate(prop = n / sum (n)) %>%
+  mutate(lab_prop = round(case_when(
+    broad_loc == "Primary Manufacturer" ~ prop
+  ),2)) %>% 
+  ggplot(aes(specific_product, prop, fill = broad_loc, label = lab_prop)) +
+  geom_col(position = "stack") + 
+  geom_label(show.legend = FALSE) + 
+  scale_fill_brewer(palette = "Set3", na.value = "grey") + 
+  coord_flip() +
+  theme_bw() + 
+  labs(title = "Percent of US Suppliers of Intermediary Products, \nby Supplier Type", subtitle = "Technology = Masks, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
 ```
 
 ## Analyzing Capacity and Lead Time Data: 
@@ -521,7 +575,7 @@ thomas_struc %>%
 # Using Tidytext to Model Differences Between Supplier Types  
 
 ```{r}
-thomas_text <- thomas_struc %>% 
+thomas_text <- thomas_an %>% 
   unnest_tokens(word, desc)
 
 thomas_text %>% head()
@@ -568,7 +622,7 @@ We also create a list of "product" words that tell us useful information but do 
 
 
 ```{r}
-product_words <- as.data.frame(c("covid", "coronavirus", "N95", "KN95", "mask", "masks", "cloth", "surgical", "medical", "ppe", "disposable", "19"))
+product_words <- as.data.frame(c("covid", "coronavirus", "N95", "KN95", "mask", "masks", "cloth", "surgical", "medical", "ppe", "disposable", "19", "dust", "industrial", "gloves", "gowns", "respirators", "face", "include", "product", "equipment", "supplies", "including", "saftey"))
 
 colnames(product_words) <- "word"
 ```
@@ -583,16 +637,15 @@ tidy_thomas <- thomas_text %>%
 ```
 
 ```{r}
-tidy_thomas %>%
-  filter(word != "masks") %>% 
-  count(word, sort = TRUE) %>%
-  filter(n > 50) %>% 
-  mutate(word = reorder(word, n)) %>%
-  ggplot(aes(word, n)) +
-  geom_col() +
-  xlab(NULL) +
-  coord_flip() + 
-  labs(y = "Count", title = "Top Words in Thomasnet Face Mask Supplier descriptions")
+thomas_noprod <- tidy_thomas %>% 
+  anti_join(product_words)
+```
+
+
+```{r}
+thomas_noprod %>%
+  group_by(broad_loc) %>% 
+  count(word, sort = TRUE) 
 ```
 
 A first question we can ask is how do these "top" words differ by firms of: 
