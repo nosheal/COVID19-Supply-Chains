@@ -554,7 +554,7 @@ thomas_an <- left_join(thomas_struc, cap_lead)
 This final dataset is ready for mapping. 
 
 ```{r}
-saveRDS(thomas_an, "fm_resp.RDS")
+saveRDS(thomas_an, "Data/fm_resp.RDS")
 ```
 
 ### Checking Validity of Product Modeling Possibilities 
@@ -575,7 +575,7 @@ thomas_struc %>%
 # Using Tidytext to Model Differences Between Supplier Types  
 
 ```{r}
-thomas_text <- thomas_an %>% 
+thomas_text <- thomas_struc %>% 
   unnest_tokens(word, desc)
 
 thomas_text %>% head()
@@ -622,7 +622,7 @@ We also create a list of "product" words that tell us useful information but do 
 
 
 ```{r}
-product_words <- as.data.frame(c("covid", "coronavirus", "N95", "KN95", "mask", "masks", "cloth", "surgical", "medical", "ppe", "disposable", "19", "dust", "industrial", "gloves", "gowns", "respirators", "face", "include", "product", "equipment", "supplies", "including", "saftey"))
+product_words <- as.data.frame(c("covid", "coronavirus", "N95", "KN95", "mask", "masks", "cloth", "surgical", "medical", "ppe", "disposable", "19", "dust", "industrial", "gloves", "gowns", "respirators", "face", "include", "product", "equipment", "supplies", "including", "safety", "respirator", "protective", "brands", "kn95", "3m", "full", "brands", "covid-19", "valve", "shields", "products", "n95", "reusable", "facepiece", "protection", "dental", "devices", "care", "glasses", "kits", "clothing", "air", "breathing", "filter", "eye", "respiratory", "valves", "nose", "head", "hand", "goggles", "filters", "latex", "ply", "sanitizer", "crisis"))
 
 colnames(product_words) <- "word"
 ```
@@ -643,81 +643,54 @@ thomas_noprod <- tidy_thomas %>%
 
 
 ```{r}
-thomas_noprod %>%
-  group_by(broad_loc) %>% 
+top_words <- thomas_noprod %>%
+  group_by(broad_loc, specific_product) %>% 
   count(word, sort = TRUE) 
 ```
 
-A first question we can ask is how do these "top" words differ by firms of: 
-
-1. Different Sizes based on Number of Employees 
 ```{r}
-thomas_fm %>% 
-  group_by(employees) %>% 
-  count()
-```
-2. Different Annual Sales
-
-```{r}
-thomas_fm %>% 
-  group_by(sales) %>% 
-  count()
-```
-
-We acknowledge that there are greatly fewer observations with data along these two categories, but differentation may be informative. 
-
-```{r}
-tidy_emp <- tidy_thomas %>% 
-  filter(!word %in% c("masks", "include", "including", "other"), !is.na(employees)) %>% 
-  group_by(employees) %>% 
-  count(word, sort = TRUE) %>%
-  filter(n > 10) %>% 
-  mutate(word = reorder(word, n),
-         proportion = n / sum(n),
-         perc = 100*proportion) 
-```
-
-
-```{r}
-tidy_emp %>% 
+resp <- top_words %>% 
+  filter(specific_product == "Respirators Only") %>%
+  filter(broad_loc %in% c("Distributor", "Primary Manufacturer")) %>% 
+  group_by(broad_loc) %>% 
+  filter(n > 5) %>% 
   ggplot(aes(word, n, fill = word)) +
   geom_col() +
-  xlab(NULL) +
-  facet_wrap(~employees) +
-  coord_flip() + 
-  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank()) + 
-  labs(title = "Word Mentions for Suppliers by Employee Size Category", fill = "", y = "")
-```
-
-In terms of total mentions, the distribution of product descriptions by employee size category seems to be roughly equivalent. 
-
-We see that firms with 200-499 employees seem to all advertise as making face masks. 
-
-```{r}
-tidy_sales <- tidy_thomas %>% 
-  filter(!word %in% c("masks", "include", "including", "other"), !is.na(sales)) %>% 
-  group_by(sales) %>% 
-  count(word, sort = TRUE) %>%
-  filter(n > 10) %>% 
-  mutate(word = reorder(word, n),
-         proportion = n / sum(n),
-         perc = 100*proportion) 
+  facet_wrap(~broad_loc) +
+  labs(title = "Top Non-Product Words for Suppliers Producing Respirators Only", subtitle = "Thomasnet, 5/29/2020", y = "") +
+  theme_bw() + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
 ```
 
 ```{r}
-tidy_sales %>% 
+fm <- top_words %>% 
+  filter(specific_product == "Face Masks Only") %>% 
+  filter(broad_loc %in% c("Distributor", "Primary Manufacturer")) %>% 
+  group_by(broad_loc) %>% 
+  filter(n > 6) %>% 
   ggplot(aes(word, n, fill = word)) +
   geom_col() +
-  xlab(NULL) +
-  facet_wrap(~sales) +
-  coord_flip() + 
-  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank()) + 
-  labs(title = "Word Mentions for Suppliers by Annual Sales Category", fill = "", y = "")
+  facet_wrap(~broad_loc) +
+  labs(title = "Top Non-Product Words for Suppliers Producing Face Masks Only", subtitle = "Thomasnet, 5/29/2020", y = "") +
+  theme_bw() + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
 ```
 
-The distribution of product description words is a bit more differentiated by annual sales category. We see that small firms with under $1 million in annual sales have a slighty different distribution of product descriptors. 
+```{r}
+both <- top_words %>% 
+  filter(specific_product == "Respirators and Face Masks") %>% 
+  filter(broad_loc %in% c("Distributor", "Primary Manufacturer")) %>% 
+  group_by(broad_loc) %>% 
+  filter(n > 10) %>% 
+  ggplot(aes(word, n, fill = word)) +
+  geom_col() +
+  facet_wrap(~broad_loc) +
+  labs(title = "Top Non-Product Words for Suppliers Producing Respirators and Face Masks", subtitle = "Thomasnet, 5/29/2020", y = "") +
+  theme_bw() + 
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
 
-Unfortunately, niether of these dimensions of analysis offered too much revelatory information. 
+We see that there do appear to be some differences between our categories. 
 
 # An Attempt at Topic Modeling
 
