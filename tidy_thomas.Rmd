@@ -98,6 +98,12 @@ thomas_clean %>%
   count()
 ```
 
+
+We note that there are a few entries that have the same location but slightly different descriptions under the "face mask" search and under the "respirators" search. The degree to which these descriptions vary differs, but because they do differ, we leave them as separate rows in our data. 
+
+Thus, there is a small amount of repitition in our data, and it is important to note that companies that produce "Face Masks and N95 Respirators" are companies that have the exact same description under both the face mask and respirators search.
+
+
 ### Further Cleaning
 
 
