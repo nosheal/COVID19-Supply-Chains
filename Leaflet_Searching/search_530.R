@@ -21,6 +21,7 @@ library(readxl)
 library(widgetframe)
 library(lattice)
 library(DT)
+library(tidytext)
 
 #Load the Data
 
@@ -30,6 +31,7 @@ measure <- c("None", "Confirmed Cases", "Deaths")
 demand <- as.data.frame(measure)
 demand$demand_id <- c(0,1,2)
 
+df_for_maps_words <- readRDS("Data/words.RDS")
 
 sc_color <- colorFactor(c("cadetblue", "darkblue", "blue", "purple", "green", "darkgreen"), domain = df_for_maps$specific_product)
 
@@ -184,6 +186,10 @@ ui <- fluidPage(
                                      )
                               )
                             ),
+                            absolutePanel(bottom = 260, right = 40,
+                                          selectizeInput("product_select", "Search (not case sensitive)", 
+                                                         choices = c("",unique(df_for_maps_words$word)), selected = NULL, multiple = TRUE)
+                            ),
                             absolutePanel(bottom = 10, right = 10,
                                       "Data from Thomasnet (5/29/30). Not all supplier locations are shown."
                             )
@@ -294,14 +300,14 @@ server <- function(input, output, session) {
         #) %>% 
         # add legend (table) that shows which color represents which country of origin (color key) - bottom left (due to mini map)
         addLegend(position = c("bottomleft"),
-                  values = filteredSupply()$specific_product,
+                  values = search_tab()$specific_product,
                   pal = sc_color,
                   title = "Supply Chain Layer"
         ) 
       
-      for (y in unique(filteredSupply()$specific_product))
+      for (y in unique(search_tab()$specific_product))
       {
-        map_lay <- filteredSupply() %>% 
+        map_lay <- search_tab() %>% 
           filter(specific_product == y)
         
 
@@ -488,11 +494,23 @@ server <- function(input, output, session) {
                 title = "Supply Chain Layer"
       )
   })
+  
+  updateSelectizeInput(session, 'product_select',
+                       choices = unique(df_for_maps_words$word),
+                       server = TRUE
+  )
+  
     
-    output$ziptable <- DT::renderDataTable({
-        df <- df_for_maps %>%
-          mutate(Action = paste('<a class="go-map" href="" data-lat="', lat, '" data-long="', long, '"><i class="fa fa-crosshairs"></i></a>', sep=""))
-        
+    search_tab <- reactive({
+     
+      search_results <- as.vector(input$product_select)
+      
+      if (length(search_results > 0)){
+        filteredSupply() %>% 
+          filter(str_detect(desc, fixed(paste(search_results, collapse = "|"), ignore_case = TRUE)))
+      } else {
+        filteredSupply()
+      }
     })
     
     
