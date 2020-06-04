@@ -1,5 +1,5 @@
 ---
-title: "Text Analytics to Determine Product Lines"
+title: "Cleaning and Analyzing Face Mask and Respirator Thomasnet Supplier Searches "
 author: "Nikhil Kalathil"
 date: "5/28/2020"
 output:
@@ -294,6 +294,56 @@ We will need to determine which categories should toggle as "part of the COVID-1
 thomas_struc %>% saveRDS("Data/resp_masks_struc.RDS")
 ```
 
+## Meets FDA or Technical Specs? 
+
+The last thing that we do is specify if our product meets FDA or other technical specs.  
+
+We define three categories: 
+
+1. Affirmatively meets FDA needs/technical specs
+2. Potentiall meets FDA needs/technical specs
+3. NA
+
+```{r}
+thomas_struc <- thomas_struc %>% 
+  mutate(useful = case_when(
+        str_detect(desc, fixed("N95", ignore_case = TRUE)) | 
+      str_detect(desc, fixed("cleanroom", ignore_case = TRUE))|
+        str_detect(desc, fixed("ISO", ignore_case = FALSE)) |
+        str_detect(desc, fixed("ASTM", ignore_case = FALSE))|
+        str_detect(desc, fixed("ANSI", ignore_case = FALSE)) |
+        str_detect(desc, fixed("AAMI", ignore_case = FALSE)) |
+        str_detect(desc, "FDA") |
+          str_detect(desc, "801") |
+                    str_detect(desc, "KN95") |
+        str_detect(desc, fixed("3M", ignore_case = FALSE)) |
+        str_detect(desc, fixed("3-ply", ignore_case = FALSE)) ~ "Affirmatively",
+      str_detect(desc, fixed("medical", ignore_case = TRUE)) |
+        str_detect(desc, fixed("surgical", ignore_case = TRUE)) |
+        str_detect(desc, fixed("dental", ignore_case = TRUE)) |
+        str_detect(desc, fixed("veterinary", ignore_case = TRUE)) |
+        str_detect(desc, fixed("dust mask", ignore_case = TRUE)) |
+        str_detect(desc, fixed("level ", ignore_case = TRUE)) |
+        str_detect(desc, "PPE") |
+        str_detect(desc, fixed("non-woven", ignore_case = FALSE)) ~ "Possibly")
+  )
+        
+```
+
+
+```{r}
+thomas_struc %>% 
+  filter(useful == "Affirmatively") %>% 
+  group_by(specific_product) %>% 
+  count() %>% 
+  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
+  geom_col() + 
+  geom_label(show.legend = FALSE) +
+  theme_bw() + 
+  labs(title = "Number of Suppliers by Specific End Product Type", subtitle = "Affirmatively meet FDA Specs, Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
+  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
+```
+
 
 ## Analyzing Supplier Types 
 
@@ -334,6 +384,7 @@ thomas_struc %>%
 
 ```{r}
 sup_type <- thomas_struc %>%
+  filter(useful %in% c("Affirmatively")) %>% 
   filter(!is.na(specific_product)) %>% 
   group_by(broad_loc, specific_product) %>% 
   count() %>% 
@@ -342,7 +393,7 @@ sup_type <- thomas_struc %>%
   facet_wrap(~broad_loc) + 
   geom_label(show.legend = FALSE) +
   theme_bw() + 
-  labs(title = "Number of Suppliers by Specific End Product Type", subtitle = "by Supplier Type, Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
+  labs(title = "Number of FDA Approved Suppliers by Specific End Product Type", subtitle = "by Supplier Type, Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
   theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
 ```
 
@@ -350,13 +401,14 @@ An immediate question that we are interested in is: for face masks and respirato
 
 ```{r}
 thomas_struc %>%
+  filter(useful %in% c("Affirmatively")) %>% 
   filter(!is.na(specific_product)) %>% 
   group_by(broad_loc, specific_product) %>% 
   count() %>% 
   ungroup() %>% 
   group_by(specific_product) %>% 
   mutate(prop = n / sum (n)) %>%
-  filter(specific_product %in% c("Respirators and Face Masks", "Face Masks Only", "Respirators Only", "Cloth Masks")) %>% 
+  filter(specific_product %in% c("Respirators and Face Masks", "Face Masks Only", "Respirators Only")) %>% 
   mutate(lab_prop = round(case_when(
     broad_loc == "Primary Manufacturer" ~ prop
   ),2)) %>% 
@@ -366,8 +418,9 @@ thomas_struc %>%
   scale_fill_brewer(palette = "Set3", na.value = "grey") + 
   coord_flip() +
   theme_bw() + 
-  labs(title = "Percent of US Suppliers of End Products, \nby Supplier Type", subtitle = "Technology = Masks, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
+  labs(title = "Prop of US Suppliers of End Products, \nby Supplier Type", subtitle = "Affirmatively meets FDA Specs, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
 ```
+
 
 
 ### Intermediary Products
@@ -379,7 +432,8 @@ int_prod <- readRDS("Data/int_prod.RDS")
 ```
 
 ```{r}
-int_prod %>% 
+int_prod %>%
+  filter(useful == "Affirmatively") %>% 
   group_by(specific_product) %>% 
   count() %>% 
   ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
@@ -387,12 +441,13 @@ int_prod %>%
   geom_label(show.legend = FALSE) +
   theme_bw() + 
   scale_fill_brewer(palette = "Set2") +
-  labs(title = "Number of Suppliers by Intermediary Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
+  labs(title = "Number of Suppliers by Intermediary Product Type", subtitle = "Affirmatively Useful, Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
   theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
 ```
 
 ```{r}
 int_prod %>%
+  filter(useful == "Affirmatively") %>% 
   filter(!is.na(specific_product)) %>% 
   group_by(broad_loc, specific_product) %>% 
   count() %>% 
@@ -408,7 +463,7 @@ int_prod %>%
   scale_fill_brewer(palette = "Set3", na.value = "grey") + 
   coord_flip() +
   theme_bw() + 
-  labs(title = "Percent of US Suppliers of Intermediary Products, \nby Supplier Type", subtitle = "Technology = Masks, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
+  labs(title = "Prop of US Suppliers of Intermediary Products, \nby Supplier Type", subtitle = "Affirmatively Useful, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
 ```
 
 ## Analyzing Capacity and Lead Time Data: 
@@ -557,7 +612,6 @@ We now want to merge this back with our original dataset.
 thomas_an <- left_join(thomas_struc, cap_lead)
 ```
 
-This final dataset is ready for mapping. 
 
 ```{r}
 saveRDS(thomas_an, "Data/fm_resp.RDS")

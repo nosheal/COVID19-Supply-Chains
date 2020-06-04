@@ -1,0 +1,309 @@
+---
+title: "Nonwovens"
+author: "Nikhil Kalathil"
+date: "6/3/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include == FALSE }
+library(tidyverse)
+library(tidytext)
+library(RColorBrewer)
+library(ggthemes)
+library(tm)
+```
+
+# Nonwovens
+
+This document will take as an input a Thomasnet search for a set of nonwoven fabric supliers. In this example, our supplier search includes: 
+
+* [nonwoven fabrics](https://www.thomasnet.com/nsearch.html?cov=NA&heading=27300201&searchsource=https%253A%252F%252Fwww.thomasnet.com%252Fsuppliers%252F&searchterm=Non-Woven+Fabrics&searchx=true&what=Non-Woven+Fabrics&which=prod)
+* [meltblown non woven fabrics](https://www.thomasnet.com/nsearch.html?cov=NA&heading=97010431&typed_term=melt+blown&what=Melt+Blown+Non-Woven+Fabrics&WTZO=Find+Suppliers)
+* [medical fabrics](https://www.thomasnet.com/nsearch.html?cov=NA&heading=27290907&searchsource=https%253A%252F%252Fwww.thomasnet.com%252Fnsearch.html&searchterm=medical+Fabrics&searchx=true&what=medical+Fabrics&which=prod)
+
+
+We will attempt to identify which companies in these four categories can provide nonwoven fabrics that meet the needs of high-filtration face masks (ASTM 2-5). 
+
+```{r}
+int_prod <- readRDS("Data/int_prod.RDS")
+```
+
+## Cleaning the Data (preprocessing)
+
+
+```{r}
+nonwoven <- readRDS("Data/nonwoven_05302020.RDS")
+nolatex <- readRDS("Data/nolatex_05302020.RDS")
+```
+
+Based on a manual review of the data in these searches, we don't have as much a need to refine our product definitions and categories. Since we have already dealt with duplicates, all that remains is to define the broad location type. 
+
+```{r}
+int_prod <- nonwoven
+```
+
+We start by ensuring we do not have duplicate entries. To do this, we begin by grouping by Company and Description. 
+
+```{r}
+int_prod %>% 
+  group_by(company, desc) %>% 
+  count() %>% 
+  group_by(n) %>% 
+  count()
+```
+We see that company and description segment our data. How does the addition of location change this? 
+
+```{r}
+int_prod %>% 
+  group_by(company, location) %>% 
+  count() %>% 
+  group_by(n) %>% 
+  count()
+```
+
+
+Along this dimension, there are 20 companies that are repeats. Let us examine these companies and how they vary by description. 
+
+```{r}
+int_prod %>% 
+  group_by(company, location) %>% 
+  count() %>% 
+  left_join(int_prod) %>% 
+  filter(n == 2) %>% 
+  view()
+```
+
+A manual review of these entries reveals that the descriptions are varied enough that it is possible that each description represents a production capability. At the very least, it represents a dimension of marketing that the company employs. 
+
+## Identifying Which Products Can be Used
+
+There are many different types of nonwoven fabrics. Overall these are very versitile products that have many different end uses. For medical purposes, there are a few key attributes of critical importance. 
+
+These attributes have to do with how masks are manufactured. We care about: 
+
+1. Grams Per Square Meter (greater is better)
+  * relates to breathability and filtration
+2. anti-flammability
+  * relates to flammability 
+3. electrostatic charge when combined with other layers 
+  * related to filtration 
+  * weakened by fluid 
+
+Nonwovens may be a limited-life, single-use fabric or a very durable fabric. Nonwoven fabrics provide specific functions such as absorbency, liquid repellency, resilience, stretch, softness, strength, flame retardancy, washability, cushioning, filtering, bacterial barriers and sterility. 
+
+In Thomasnet, we have a variety of information from supplier descriptions. There is obviously a good deal of uncertainty about the degree to which we can trust these descriptions, but we can use the descriptions to affirmatively identify suppliers that are producing a potentially useful product. 
+
+We will identify three mutually exclusive levels: 
+1. Affirmatevely produces a product that is directly useable for COVID-19 masks and respirators
+2. Produces a product that is potentially useable for COVID-19 masks and respirators. 
+3. Does not meet COVID-19 standards. 
+
+We will now define these three categories.
+
+Seperately we will flag entities that mention "coatings" as we know that this is a potentially disruptive technology. 
+
+### Affirmatively Producing Covid-19 Relevant Fabric
+
+```{r}
+example <- function(data, comp) {
+  data %>% 
+    filter(company == comp) %>% 
+    select(desc)
+}
+```
+
+In the `melt blown non-woven fabrics suppliers` search we identify an example of a company that is firmly in category 1. 
+
+```{r}
+int_prod %>% 
+  example("Fiber Dynamics, Inc.")
+```
+
+This company specifies a gsm range that meets ASTM level 1 to 5 masks, and also specifically states that the masks have other desireable properties such as: porosity, absorbency, insulation, and filtration. 
+
+Other examples in this category will specifically mention:
+
+* specific technologies
+
+```{r}
+int_prod %>% 
+  example("L&M Supply and Manufacturing")
+```
+
+* specific certifications
+```{r}
+int_prod %>% 
+  example("MBK Tape Solutions")
+```
+
+Other technologies in this category include mentionsof specific nonwoven materials that lend themselves to mask materials (such as spunbonded, melt blown, polypropylene, spunlace, electrospun, or hydroentangled)
+
+```{r}
+cat_1 <- function(data) {
+  data %>% 
+    mutate(desc = str_replace(desc, fixed("spun bonded", ignore_case = TRUE), "spunbonded"), 
+           desc = str_replace(desc, fixed("spun-bonded", ignore_case = TRUE), "spunbonded"), 
+           desc = str_replace(desc, fixed("melt blown", ignore_case = TRUE), "meltblown"),
+           desc = str_replace(desc, fixed("melt-blown", ignore_case = TRUE), "meltblown"), 
+           desc = str_replace(desc, fixed("needlepunch", ignore_case = TRUE), "needle punch")) %>% 
+    mutate(cat_1 = case_when(
+      str_detect(desc, fixed("gsm", ignore_case = TRUE)) |
+        str_detect(desc, fixed("spunbonded", ignore_case = TRUE)) | 
+        str_detect(desc, fixed("needle punch", ignore_case = TRUE)) | 
+        str_detect(desc, fixed("meltblown", ignore_case = TRUE)) |
+      str_detect(desc, "ISO") |
+        str_detect(desc, fixed("polypropylene", ignore_case = TRUE)) |
+        str_detect(desc, fixed("spunlace", ignore_case = TRUE)) |
+        str_detect(desc, fixed("hydroentangled", ignore_case = TRUE)) |
+         str_detect(desc, fixed("ghz", ignore_case = TRUE)) |
+        str_detect(desc, fixed("electrospun", ignore_case = TRUE))  ~ "cat_1"))
+}
+  
+```
+
+```{r}
+int_prod %>% 
+  cat_1()%>% 
+  filter(cat_1 == "cat_1") %>% 
+  count()
+```
+
+### Produces a product that is potentially useable for COVID-19 masks and respirators. 
+
+In this category, we have companies that state that they are providing supplies for medical or hospital settings. They don't mention any of the specific attributes in category 1, but they mention things like "medical", "hospital" and mask.
+
+```{r}
+cat_2 <- function(data) {
+  data %>% 
+    cat_1() %>% 
+    mutate(cat_2 = case_when(
+      (str_detect(desc, fixed("hospital", ignore_case = TRUE)) |
+        str_detect(desc, fixed("medical", ignore_case = TRUE)) | 
+        str_detect(desc, fixed("surgical", ignore_case = TRUE)) |
+        str_detect(desc, fixed("dental", ignore_case = TRUE)) |
+        str_detect(desc, "dust"))  ~ "cat_2")) %>% 
+    mutate(cat_2 = case_when(
+      cat_1 == "cat_1" ~ NA_character_,
+      TRUE ~ cat_2
+    ))
+}
+```
+
+```{r}
+int_prod %>% 
+  cat_2()%>% 
+  filter(cat_2 == "cat_2") %>% 
+  count()
+```
+
+
+### Category 3 and Coatings
+
+Category 3 mention none of the other categories, but do mention coatings. We remove mentions of vinyl coatings as these tend to relate to furniture. 
+
+```{r}
+cat_3 <- function(data) {
+  data %>% 
+    cat_1() %>% 
+    cat_2() %>% 
+    mutate(cat_3 = case_when(
+      str_detect(desc, "metal")  ~ "cat_3")) %>% 
+    mutate(cat_3 = case_when(
+      cat_1 == "cat_1" | cat_2 == "cat_2" ~ NA_character_,
+      TRUE ~ cat_3
+    )) 
+}
+```
+
+
+```{r}
+int_prod %>% 
+  cat_3() %>%   
+  view()
+```
+
+An example includes Markek, Inc. 
+
+```{r}
+int_prod %>% 
+  example("Marktek, Inc.")
+```
+
+
+## Filter Out Unrelated Entries and Define Our Toggle 
+
+We now filter out entries that fit none of the above categories.
+
+After a manual review of our data we notice that there is one entry that should be added to cat_3
+
+```{r}
+int_prod_clean <- int_prod %>% 
+  cat_3() %>% 
+  mutate(cat_3 = case_when(
+    company %in% c("Technical Fibre Products, Inc.", "	Goodfellow Corp.") ~ "cat_3", 
+    TRUE ~ cat_3
+  )) %>% 
+  filter(!is.na(cat_1) | !is.na(cat_2) | !is.na(cat_3))
+```
+
+```{r}
+int_prod %>% 
+  anti_join(int_prod_clean) %>% 
+  view()
+```
+
+We see that we now have only 204 observations. Let us define our toggle. 
+
+```{r}
+nonwoven <- int_prod_clean %>% 
+  mutate(useful = case_when(
+    cat_1 == "cat_1" ~ "Affirmatively", 
+    cat_2 == "cat_2" | cat_3 == "cat_3" ~ "Possibly"
+  ))
+```
+
+```{r}
+nolatex <- nolatex %>% 
+  mutate(useful = "Affirmatively")
+```
+
+
+```{r}
+int_prod_sf <- bind_rows(nonwoven, nolatex)
+```
+
+
+```{r}
+int_prod_struc <- int_prod_sf %>% 
+  mutate(broad_loc = case_when(
+    str_detect(loc_desc, "Manufacturer\\*") ~ "Primary Manufacturer", 
+    str_detect(loc_desc, "Manufacturer") & str_detect(loc_desc, "Manufacturer\\*", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep", negate = TRUE) ~ "Secondary Manufacturer",
+    str_detect(loc_desc, "Distributor") | str_detect(loc_desc, "Manufacturers' Rep*") ~ "Distributor", 
+    str_detect(loc_desc, "Manufacturer", negate = TRUE) & str_detect(loc_desc, "Manufacturer\\*", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep", negate = TRUE) & 
+      str_detect(loc_desc, "Distributor", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep*", negate = TRUE) ~ "Other"))
+```
+
+```{r}
+int_prod_struc %>% 
+  group_by(specific_product) %>% 
+  count()
+```
+
+
+```{r}
+saveRDS(int_prod_struc, "Data/int_prod.RDS")
+```
+
+

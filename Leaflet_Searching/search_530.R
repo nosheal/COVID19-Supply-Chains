@@ -56,8 +56,8 @@ df_for_maps <- df_for_maps %>%
 df_for_maps <- df_for_maps %>% 
   filter(company != "Wurzburg", company != "Wurzburg, Inc.",
          company != "Cinder & Sky, Inc.") %>% 
-  mutate(group = if_else(is.na(group), "Missing", group))
-
+  mutate(group = if_else(is.na(group), "Missing", group)) %>% 
+  mutate(useful = if_else(is.na(useful), "Unknown", useful))
 
 ### LOAD MAPPING PREREQS
 
@@ -167,14 +167,19 @@ ui <- fluidPage(
                               )
                               ),
                             fluidRow(
-                              column(2,
+                              column(3,
                                           selectInput("demand_select", "Demand Layer", 
                                                              choices = unique(as.character(demand$measure))
                                           )
                               ),
-                              column(2, 
+                              column(3, 
                                      checkboxGroupInput("covid_select", "Affirmatively Participating in COVID-19 Response?", 
-                                                        choices = unique(df_for_maps$covid_resp), selected = c("Yes", "No")
+                                                        choices = unique(df_for_maps$covid_resp), selected = c("Yes", "Unknown")
+                                     )
+                              ),
+                              column(3, 
+                                     checkboxGroupInput("fda_select", "Meets FDA/Technical Specs?", 
+                                                        choices = c("Affirmatively", "Possibly", "Unknown"), selected = c("Affirmatively")
                                      )
                               )
                             ),
@@ -218,8 +223,13 @@ server <- function(input, output, session) {
   # We deal with each supply "group" seperately and merge it back together into our final dataframe
   # There is likely a more efficient way to do this, and this section should be revised. 
 
-  filteredCovid <- reactive({
+  filteredFDA <- reactive({
     df_for_maps %>% 
+      filter(useful %in% input$fda_select)
+  })
+  
+  filteredCovid <- reactive({
+    filteredFDA() %>% 
       filter(covid_resp %in% input$covid_select)
   })
   
