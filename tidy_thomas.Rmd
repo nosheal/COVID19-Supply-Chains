@@ -290,10 +290,6 @@ thomas_struc %>%
 
 We will need to determine which categories should toggle as "part of the COVID-19 response."
 
-```{r}
-thomas_struc %>% saveRDS("Data/resp_masks_struc.RDS")
-```
-
 ## Meets FDA or Technical Specs? 
 
 The last thing that we do is specify if our product meets FDA or other technical specs.  
@@ -314,8 +310,9 @@ thomas_struc <- thomas_struc %>%
         str_detect(desc, fixed("ANSI", ignore_case = FALSE)) |
         str_detect(desc, fixed("AAMI", ignore_case = FALSE)) |
         str_detect(desc, "FDA") |
-          str_detect(desc, "801") |
-                    str_detect(desc, "KN95") |
+        str_detect(desc, "NIOSH") |
+        str_detect(desc, "801") |
+        str_detect(desc, "KN95") |
         str_detect(desc, fixed("3M", ignore_case = FALSE)) |
         str_detect(desc, fixed("3-ply", ignore_case = FALSE)) ~ "Affirmatively",
       str_detect(desc, fixed("medical", ignore_case = TRUE)) |
@@ -333,7 +330,7 @@ thomas_struc <- thomas_struc %>%
 
 ```{r}
 thomas_struc %>% 
-  filter(useful == "Affirmatively") %>% 
+  filter(useful == "Affirmatively") %>%
   group_by(specific_product) %>% 
   count() %>% 
   ggplot(aes(specific_product, n, fill = specific_product, label = n)) +

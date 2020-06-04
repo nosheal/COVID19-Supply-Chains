@@ -57,7 +57,8 @@ df_for_maps <- df_for_maps %>%
   filter(company != "Wurzburg", company != "Wurzburg, Inc.",
          company != "Cinder & Sky, Inc.") %>% 
   mutate(group = if_else(is.na(group), "Missing", group)) %>% 
-  mutate(useful = if_else(is.na(useful), "Unknown", useful))
+  mutate(useful = if_else(is.na(useful), "Unknown", useful)) %>% 
+  mutate(broad_loc = if_else(is.na(broad_loc), "Unknown", broad_loc))
 
 ### LOAD MAPPING PREREQS
 
