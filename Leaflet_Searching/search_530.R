@@ -188,7 +188,9 @@ ui <- fluidPage(
                             ),
                             absolutePanel(bottom = 260, right = 40,
                                           selectizeInput("product_select", "Search (not case sensitive)", 
-                                                         choices = c("",unique(df_for_maps_words$word)), selected = NULL, multiple = TRUE)
+                                                         choices = unique(df_for_maps_words$word), selected = NULL, multiple = TRUE),
+                                          radioButtons("search_comb", "Combine Search Terms With...",
+                                                       choices = c("and", "or"), selected = "or", inline = TRUE)
                             ),
                             absolutePanel(bottom = 10, right = 10,
                                       "Data from Thomasnet (5/29/30). Not all supplier locations are shown."
@@ -506,11 +508,19 @@ server <- function(input, output, session) {
       search_results <- as.vector(input$product_select)
       
       if (length(search_results > 0)){
-        filteredSupply() %>% 
-          filter(str_detect(desc, fixed(paste(search_results, collapse = "|"), ignore_case = TRUE)))
-      } else {
+        if(input$search_comb == "or"){
+          filteredSupply() %>% 
+            mutate(desc = tolower(desc)) %>% 
+            filter(str_detect(desc, paste(search_results, sep = "|")))
+        } else if (input$search_comb == "and") {
+          filteredSupply() %>% 
+            mutate(desc = tolower(desc)) %>% 
+            filter(apply(sapply(search_results, grepl, desc), 1, all))
+        }
+        }
+      else {
         filteredSupply()
-      }
+        }
     })
     
     
