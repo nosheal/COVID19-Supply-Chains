@@ -145,7 +145,7 @@ int_prod %>%
   example("MBK Tape Solutions")
 ```
 
-Other technologies in this category include mentionsof specific nonwoven materials that lend themselves to mask materials (such as spunbonded, melt blown, polypropylene, spunlace, electrospun, or hydroentangled)
+Other technologies in this category include mentions of specific nonwoven materials that lend themselves to mask materials (such as spunbonded, melt blown, polypropylene, spunlace, electrospun, or hydroentangled)
 
 ```{r}
 cat_1 <- function(data) {

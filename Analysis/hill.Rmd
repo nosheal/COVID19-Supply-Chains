@@ -1,0 +1,114 @@
+---
+title: "Hill Slides"
+author: "Nikhil Kalathil"
+date: "6/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, include = FALSE}
+library(tidyverse)
+library(RColorBrewer)
+library(ggthemes)
+```
+
+```{r}
+thomas_an <- readRDS("Data/fm_resp.RDS")
+int_prod <- readRDS("Data/int_prod.RDS")
+```
+
+
+```{r}
+hill <- bind_rows(int_prod, thomas_an)
+```
+
+```{r}
+use_col <- c("black", "white")
+```
+
+```{r}
+fig1 <- hill %>% 
+  mutate(broad_product = if_else(broad_product == "End-Product", "End Product", broad_product)) %>% 
+  filter(specific_product != "Respirators Only") %>% 
+  mutate(specific_product = if_else(specific_product == "Respirators and Face Masks" | specific_product == "Face Masks Only", "Medical Masks", specific_product), 
+         specific_product = if_else(specific_product == "Non-Woven Fabric", "Meltblown/Spunbonded Fabric", specific_product)) %>% 
+  group_by(broad_product, specific_product) %>% 
+  count() %>% 
+  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
+  geom_col(position = "dodge") + 
+  geom_label(show.legend = FALSE) +
+  scale_fill_brewer(palette = "Set2") +
+  theme_bw() + 
+  labs(title = "Number of Suppliers by Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
+  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
+```
+
+
+```{r}
+fig2 <- hill %>% 
+  mutate(broad_product = if_else(broad_product == "End-Product", "End Product", broad_product)) %>% 
+  filter(specific_product != "Respirators Only") %>% 
+  mutate(specific_product = if_else(specific_product == "Respirators and Face Masks" | specific_product == "Face Masks Only", "Medical Masks", specific_product), 
+         specific_product = if_else(specific_product == "Non-Woven Fabric", "Meltblown/Spunbonded Fabric", specific_product)) %>% 
+  filter(!is.na(useful)) %>% 
+  mutate(useful = case_when(
+    useful == "Affirmatively" ~ "Affirmatively Meets FDA Specs", 
+    useful == "Possibly" ~ "Possibly Meets FDA Specs"
+  )) %>% 
+  group_by(broad_product, specific_product, useful) %>% 
+  count() %>% 
+  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
+  geom_col(position = "dodge") + 
+  geom_label(show.legend = FALSE) +
+  facet_wrap(~useful) +
+  guides(color = FALSE) +
+  scale_fill_brewer(palette = "Set2") +
+  theme_bw() + 
+  labs(title = "Number of Suppliers by Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
+  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
+```
+
+```{r}
+fig3 <- hill %>% 
+  mutate(specific_product = str_replace(specific_product, "Face", "Medical"), 
+         broad_product = if_else(broad_product == "End-Product", "End Product", broad_product)) %>% 
+  mutate(specific_product = if_else(specific_product == "Non-Woven Fabric", "Meltblown/Spunbonded Fabric", specific_product)) %>% 
+  group_by(broad_product, specific_product) %>% 
+  filter(specific_product != "NA") %>% 
+  count() %>% 
+  ggplot(aes(reorder(specific_product, n), n, fill = specific_product, label = n)) +
+  geom_col(position = "dodge", show.legend = FALSE) + 
+  geom_label(show.legend = FALSE) +
+  scale_fill_brewer(palette = "Set2") +
+  theme_bw() + 
+  coord_flip() + 
+  labs(title = "Number of Suppliers by Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product")
+```
+
+
+```{r}
+fig4 <- hill %>% 
+  mutate(specific_product = str_replace(specific_product, "Face", "Medical"), 
+         broad_product = if_else(broad_product == "End-Product", "End Product", broad_product)) %>% 
+  mutate(specific_product = if_else(specific_product == "Non-Woven Fabric", "Meltblown/Spunbonded Fabric", specific_product)) %>% 
+  filter(!is.na(useful)) %>% 
+  mutate(useful = case_when(
+    useful == "Affirmatively" ~ "Affirmatively Meets FDA Specs", 
+    useful == "Possibly" ~ "Possibly Meets FDA Specs"
+  )) %>% 
+  group_by(broad_product, specific_product, useful) %>% 
+  filter(specific_product != "NA") %>% 
+  count() %>% 
+  ggplot(aes(reorder(specific_product, n), n, fill = specific_product, label = n)) +
+  geom_col(position = "dodge", show.legend = FALSE) + 
+  geom_label(show.legend = FALSE) +
+  scale_fill_brewer(palette = "Set2") +
+  theme_bw() + 
+  coord_flip() + 
+  facet_wrap(~useful) +
+  labs(title = "Number of Suppliers by Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product")
+  
+  
+```

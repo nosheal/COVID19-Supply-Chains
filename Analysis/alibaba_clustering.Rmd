@@ -1,0 +1,532 @@
+---
+title: "Cluster Alibaba Products"
+author: "Nikhil Kalathil"
+date: "6/7/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This file will define a procedure to clean and sort Alibaba product data. Below is a brief summary of the data: 
+
+As of 06/06/2020, these searches return the following number of entries: 
+
+* procedural masks: 96
+* medical masks: 800
+* n95 masks: 800
+* respirators: 152
+* meltblown fabric: 880
+* spunbonded fabric: 800
+* ear loops: 280
+* nose bridges: 320
+
+There is a discrepancy between these numbers and the numbers of prodcts listed on Alibaba, but for now, this will have to do. With this many products, hopefully we can still assemble a somewhat complete picture of the product space. 
+
+```{r, include = FALSE}
+library(tidyverse)
+library(rvest)
+library(rebus)
+library(lubridate)
+library(data.table)
+library(here)
+library(tidytext)
+library(tm)
+```
+
+# Load data
+
+When we load our data, we will also impute a variable `search_product`, which will denote the search variable used on Alibaba. 
+
+We will then remove duplicates and analyze the Alibaba product space. 
+
+Key questions include: 
+
+* How many unique companies are there? 
+* How many products does one company make? 
+* What product types are there? 
+* How well can we categorize products based on product description? 
+  * Can we use clustering alogrothims to create different prodcut definitions/clusters? 
+
+Let us begin. 
+
+## End Products
+
+### N95 and Respirators
+
+We start with respirators. We used two terms for respirators `n95` and `resipirators`. 
+
+* n95 masks: 800
+* respirators: 152
+
+```{r}
+n95_masks <- readRDS(here("Data/n95_ab.RDS"))
+```
+
+```{r}
+resp <- readRDS(here("Data/ab_resp.RDS"))
+```
+
+We count, define search products, merge, and then remove duplicates. 
+
+
+```{r}
+n95_masks %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  group_by(n) %>% 
+  count()
+```
+
+Lets take a look at the 4 repeats. 
+
+```{r}
+n95_masks %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  filter(n == 2) %>% 
+  left_join(n95_masks) %>% 
+  view()
+```
+
+We notice that the entries we want to keep have more information about price per unit. 
+
+```{r}
+n95_masks %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  filter(n == 2) %>% 
+  left_join(n95_masks) %>%
+  select(price_per_unit)
+```
+
+```{r}
+n95_masks_nodup <- n95_masks %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  left_join(n95_masks, .) %>% 
+  mutate(drop_ind = case_when(
+    n == 2 & str_detect(price_per_unit, "Carton|Piece|Set", negate = TRUE) ~ "DROP")
+    ) %>% 
+  filter(is.na(drop_ind))
+  
+```
+
+Now, let us count how many companies we have. 
+
+```{r}
+n95_masks_nodup %>% 
+  group_by(company) %>% 
+  count() %>% 
+  select(company, n) %>% 
+  arrange(n)
+  
+```
+
+We immediately notice that there are 8 companies that produce all 800 products in our dataset. This is very intersting. We perform some manual review of descriptions. 
+
+
+```{r}
+n95_comp <- n95_masks_nodup %>% 
+  group_by(company) %>% 
+  count() %>% 
+  left_join(n95_masks_nodup, .)
+```
+The first thing that we notice is many entries in our dataset our actually mask making machines!
+
+
+```{r}
+n95_comp %>% 
+  filter(str_detect(product, fixed("machine", ignore_case = TRUE))) %>% 
+  group_by(price_per_unit) %>% 
+  count() %>% 
+  group_by(n) %>% 
+  count()
+           
+```
+
+A fun thing to note is that some of these machines are available for under $2,000 per set! There is a high variety in what these machines are used for, from end product machines down to machines to make individul intermediary products such as ear loops. 
+
+We separate out these data and then remove them from our main data frame. 
+
+```{r}
+n95_comp <- n95_comp %>% 
+  mutate(search_product = "N95 Masks")
+
+n95_machines <- n95_comp %>% 
+    filter(str_detect(product, fixed("machine", ignore_case = TRUE)))
+
+n95_clean1 <- anti_join(n95_comp, n95_machines)
+  
+```
+
+```{r}
+n95_machines %>% 
+  count()
+```
+
+We see that machines are actually a huge component of our dataset. Before we continue with our analysis, let us also add data for respirators. 
+
+
+
+```{r}
+resp %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  group_by(n) %>% 
+  count()
+```
+
+Lets take a look at these repeats. 
+
+```{r}
+resp %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  filter(n >= 2) %>% 
+  left_join(resp) %>%  
+  view() 
+```
+
+```{r}
+resp %>% 
+  group_by(company, product) %>% 
+  mutate(count = seq(n())) %>% 
+  arrange(-count) %>% 
+  head(5)
+```
+
+```{r}
+resp_nodup <- resp %>% 
+  group_by(company, product) %>% 
+  mutate(count = seq(n())) %>% 
+  filter(count == 1)
+```
+
+```{r}
+resp_comp <- resp_nodup %>% 
+  group_by(company) %>% 
+  mutate(n = sum(n()), 
+         search_product = "respirator")
+```
+
+We separate out the machine data and then merge both with the n95 products. 
+
+```{r}
+resp_machine <- resp_comp %>% 
+    filter(str_detect(product, fixed("machine", ignore_case = TRUE)))
+
+resp_clean1 <- anti_join(resp_comp, resp_machine)
+  
+```
+
+```{r}
+resp_tot <- bind_rows(resp_clean1, n95_clean1)
+
+mach_tot <- bind_rows(resp_machine, n95_machines)
+```
+
+```{r}
+resp_tot %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  arrange(-n) %>% 
+  head(5)
+```
+
+```{r}
+resp_tot <- resp_tot %>% 
+  group_by(company, product) %>% 
+  mutate(count = seq(n())) %>% 
+  filter(count == 1) %>% 
+  ungroup()
+```
+
+# Clustering
+
+We will attempt to automatically cluster products into specific classes using text mining. We follow [this resource](https://medium.com/@SAPCAI/text-clustering-with-r-an-introduction-for-data-scientists-c406e7454e76)
+
+```{r}
+corpus = Corpus(
+  VectorSource(resp_tot$product)
+)
+```
+
+
+```{r}
+corpus_cleaned <- tm_map(corpus, removeWords, stopwords('english')) # Removing stop-words 
+corpus_cleaned <- tm_map(corpus_cleaned, stripWhitespace) # Trimming excessive whitespaces
+```
+
+In this case, we will NOT stem our words. Our product descriptions are brief enough that shortening them further will lose context and data. 
+
+
+We then turn our corpus into a [weighted TF-IDF](https://nlp.stanford.edu/IR-book/html/htmledition/tf-idf-weighting-1.html), or a weighted document term matrix. 
+
+```{r}
+tdm <- DocumentTermMatrix(corpus_cleaned) 
+tdm_tfidf <- weightTfIdf(tdm)
+```
+
+```{r}
+tfidf_matrix <- as.matrix(tdm_tfidf) 
+# Cosine distance matrix (useful for specific clustering algorithms) 
+dist_matrix = proxy::dist(tfidf_matrix, method = "cosine")
+```
+
+```{r}
+m <- as.matrix(tdm)
+```
+```{r}
+d <- proxy::dist(m)
+```
+
+```{r}
+#run hierarchical clustering using Ward’s method
+groups_weighted <- hclust(dist_matrix,method="ward.D")
+groups_unweighted <- hclust(d,method="ward.D")
+```
+
+```{r}
+library(ape)
+```
+
+```{r}
+plot(as.phylo(groups_weighted), type = "unrooted", cex = 0.6,
+     no.margin = TRUE)
+```
+A key issue is that our clusters are associated with document numbers. We will need to go back and pair these with words later. 
+
+```{r}
+test <- plot(as.phylo(groups_unweighted), type = "unrooted", cex = 0.6,
+     no.margin = TRUE)
+```
+
+We see that their are substantial differences between the wieghted and the unweighted versions. Both versions seem interesting and potentially useful. 
+
+```{r}
+sub_group <- cutree(groups_weighted, k = 4)
+
+table(sub_group)
+```
+
+```{r}
+sub_group_unweight <- cutree(groups_weighted, k =3)
+
+table(sub_group_unweight)
+```
+
+```{r}
+hc_clust <- data.table(weighted = sub_group, 
+                       unweighted = sub_group_unweight)
+
+hc_clust$id = rownames(hc_clust)
+```
+
+We will also try a k-means algorithim. 
+
+```{r}
+#k means algorithm, 4 clusters, 100 starting configurations
+kfit <- kmeans(dist_matrix, 4, nstart=100)
+kfit_unweighted <- kmeans(d, 4, nstart =100)
+```
+
+```{r}
+#plot – need library cluster
+library(cluster)
+clusplot(as.matrix(dist_matrix), kfit$cluster, color=T, shade=T, labels=2, lines=0)
+```
+
+```{r}
+clusplot(as.matrix(d), kfit$cluster, color=T, shade=T, labels=2, lines=0)
+```
+
+With k-means, we notice that the unweighted document term matrix seems to perform better into clustering our products into distinct groups. 
+
+Thus, we have 3 clustering algorithims we will choose and preserve in our data: 
+
+* weighted heirarchical 
+* unweighted heirarchical
+* weighted kmeans
+
+```{r}
+resp_tot <- resp_tot %>% 
+  ungroup() %>% 
+  mutate(id = as.character(seq(n())))
+```
+
+```{r}
+kcluster <- data.table(k_cluster = kfit[["cluster"]])
+
+kcluster$id <- rownames(kcluster)
+```
+
+```{r}
+resp_tot_clusters <- resp_tot %>% 
+  left_join(hc_clust) %>% 
+  left_join(kcluster)
+```
+
+The question is now, how do we go about evaluating our results? 
+
+We will use a different type of text analysis. 
+
+## Associating words with each cluster
+
+```{r}
+resp_tot_words <- resp_tot_clusters %>% 
+  unnest_tokens(word, product)
+```
+
+
+```{r}
+stop_words <- stop_words %>% 
+  filter(!word %in% c("beyond", "changes",  "contains", "containing", "contain", "nearly", "only", "novel", "plus", "possible", "particular", "particularly", "provides", "probably")) %>% 
+  filter(lexicon == "SMART")
+```
+
+We also create a list of "product" words that tell us useful information but do not allow us much differentiation between groups. 
+
+```{r}
+product_words <- as.data.frame(c("covid", "coronavirus", "N95", "KN95", "mask", "masks", "cloth", "surgical", "medical", "ppe", "disposable", "19", "dust", "industrial", "gloves", "gowns", "respirators", "face", "include", "product", "equipment", "supplies", "including", "safety", "respirator", "protective", "brands", "kn95", "3m", "full", "brands", "covid-19", "valve", "shields", "products", "n95", "reusable", "facepiece", "protection", "dental", "devices", "care", "glasses", "kits", "clothing", "air", "breathing", "filter", "eye", "respiratory", "valves", "nose", "head", "hand", "goggles", "filters", "latex", "ply", "sanitizer", "crisis"))
+
+colnames(product_words) <- "word"
+```
+
+
+```{r}
+tidy_resp <- resp_tot_words %>% 
+  anti_join(stop_words) %>% 
+  filter(word != "19") %>% 
+  mutate(word = str_replace(word, "covid", "covid-19"))
+```
+
+We can now count word mentions by cluster to see how we did. Ideally, each cluster would have substantially different words associated with them. 
+
+```{r}
+library(RColorBrewer)
+```
+
+
+```{r}
+tidy_resp %>% 
+  group_by(word, weighted) %>% 
+  count() %>% 
+  filter(weighted == 1, n > 15) %>% 
+  ggplot(aes(word, n, fill = word)) + 
+  geom_col(position = "dodge")+ 
+  coord_flip()
+```
+
+```{r}
+tidy_resp %>% 
+  group_by(word, weighted) %>% 
+  count() %>% 
+  filter(weighted == 2, n > 15) %>% 
+  ggplot(aes(word, n, fill = word)) + 
+  geom_col(position = "dodge")+ 
+  coord_flip()
+```
+
+```{r}
+tidy_resp %>% 
+  group_by(word, weighted) %>% 
+  count() %>% 
+  filter(weighted == 3, n > 14) %>% 
+  ggplot(aes(word, n, fill = word)) + 
+  geom_col(position = "dodge")+ 
+  coord_flip()
+```
+
+```{r}
+tidy_resp %>% 
+  group_by(word, weighted) %>% 
+  count() %>% 
+  filter(weighted == 4, n > 14) %>% 
+  ggplot(aes(word, n, fill = word)) + 
+  geom_col(position = "dodge")+ 
+  coord_flip()
+```
+
+We can see that there certainly appears to be some deviations between our clusters. Let us look at our unweighted groupings. 
+
+```{r}
+tidy_resp %>% 
+  group_by(word, unweighted) %>% 
+  count() %>% 
+  filter(unweighted == 1, n > 15) %>% 
+  ggplot(aes(word, n, fill = word)) + 
+  geom_col(position = "dodge")+ 
+  coord_flip()
+```
+
+```{r}
+tidy_resp %>% 
+  group_by(word, unweighted) %>% 
+  count() %>% 
+  filter(unweighted == 2, n > 15) %>% 
+  ggplot(aes(word, n, fill = word)) + 
+  geom_col(position = "dodge")+ 
+  coord_flip()
+```
+
+```{r}
+tidy_resp %>% 
+  group_by(word, unweighted) %>% 
+  count() %>% 
+  filter(unweighted == 3, n > 15) %>% 
+  ggplot(aes(word, n, fill = word)) + 
+  geom_col(position = "dodge")+ 
+  coord_flip()
+```
+
+Our unweighted groupings also performed well. Let us see how our kmeans clustering performed. 
+
+```{r}
+tidy_resp %>% 
+  group_by(word, k_cluster) %>% 
+  count() %>% 
+  filter(k_cluster == 1, n > 14) %>% 
+  ggplot(aes(word, n, fill = word)) + 
+  geom_col(position = "dodge")+ 
+  coord_flip()
+```
+```{r}
+tidy_resp %>% 
+  group_by(word, k_cluster) %>% 
+  count() %>% 
+  filter(k_cluster == 2, n > 14) %>% 
+  ggplot(aes(word, n, fill = word)) + 
+  geom_col(position = "dodge")+ 
+  coord_flip()
+```
+
+```{r}
+tidy_resp %>% 
+  group_by(word, k_cluster) %>% 
+  count() %>% 
+  filter(k_cluster == 3, n > 14) %>% 
+  ggplot(aes(word, n, fill = word)) + 
+  geom_col(position = "dodge")+ 
+  coord_flip()
+```
+
+```{r}
+tidy_resp %>% 
+  group_by(word, k_cluster) %>% 
+  count() %>% 
+  filter(k_cluster == 4, n > 14) %>% 
+  ggplot(aes(word, n, fill = word)) + 
+  geom_col(position = "dodge")+ 
+  coord_flip()
+```
+
+The k-means clustering had a bit more overlap. Thus, we will in general stick with heirarchical clustering for these analyses. 
+
+

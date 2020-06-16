@@ -1,0 +1,622 @@
+---
+title: "Thomasnet Webscraping"
+author: "Nikhil Kalathil"
+date: "5/27/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document will contain a program to webscrap and format Thomasnet search data. The results of this program are not complete and require additional cleaning/manual data entry, but this program should solve the problem of needing to download large Thomasnet searches. 
+
+```{r, include = FALSE}
+library(tidyverse)
+library(rvest)
+library(rebus)
+library(lubridate)
+```
+
+# Face Masks
+
+We start by doing the search for Face Masks. 
+
+## Set up 
+
+Step 1: Set up our URLs
+
+We note that the first page's url differs slightly from the urls of each individal page, so we define two base urls. 
+
+```{r}
+main_url <- "https://www.thomasnet.com/nsearch.html?cov=NA&what=face+masks&heading=50100403&searchterm=face+masks&searchsource=https%3A%2F%2Fwww.thomasnet.com%2Fsearch.html"
+```
+
+```{r}
+pages_url <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=50100403&searchsource=https%3A%2F%2Fwww.thomasnet.com%2Fsearch.html&searchterm=face+masks&what=face+masks&"
+```
+
+We then define a fucntion to tell us how many pages are in our search. 
+
+```{r}
+get_pages <- function(html){
+  pages <- html %>% 
+    html_nodes(".page-item") %>% 
+    html_text()
+  
+  pages[(length(pages)-1)] %>% 
+    unname() %>% 
+    as.numeric()
+}
+```
+
+We now store the number of pages for our search. 
+
+```{r}
+first_page <- read_html(main_url)
+total_pages <- get_pages(first_page)
+```
+
+Our list of pages is then: 
+
+```{r}
+list_of_pages <- str_c(pages_url, "pg=", 1:total_pages)
+```
+
+## Get Information for Each Page 
+
+The way that information is stored is slightly complex. As such, we are going to primarly focus on getting all of the information that we want, and will then later focus on cleaning these data for final analysis. 
+
+There are a few key components for each entry we are interested in: 
+
+* Company Name
+* Verification 
+* Location
+* Supplier Data 
+* Body Text
+
+The way that the data are stored on the website means that we will seperately grab company information, verification (which will repeat company name), body text, while our location/supplier data will be joined together. We will worry about cleaning these later. 
+
+We are going to define a seperate function for each of these components. 
+
+```{r}
+get_name <- function(html){ 
+  
+  html %>%
+    html_nodes(".profile-card__title") %>% 
+    html_text() %>% 
+    unlist()
+    
+}
+
+get_verification <- function(html){ 
+  
+  html %>% 
+    html_nodes(".profile-card__header") %>% 
+    html_text() %>% 
+    str_replace_all("\n", " ") %>% 
+    str_replace_all(" Save  Select    ", "") %>% 
+    str_replace_all("Path", "_") %>% 
+    unlist()
+  
+}
+
+get_data <- function(html){
+  
+  html %>% 
+    html_nodes(".profile-card__supplier-data") %>%
+    html_text() %>% 
+    str_replace_all("\n", "_") %>% 
+    str_replace_all("        ico-map    ", "")
+}
+
+get_text <- function(html){
+
+html %>% 
+  html_nodes(".profile-card__content") %>% 
+  html_text() %>% 
+  str_replace_all("\n", " ") %>% 
+  str_trim()
+}
+```
+
+
+We now need to turn each of these entries into a data frame. We define a function for this as well: 
+
+```{r}
+make_table <- function(html){
+  
+  name <- get_name(html)
+  verif <- get_verification(html)
+  supplier_data <- get_data(html)
+  text <- get_text(html)
+  
+  combined_data <- tibble(company = name,
+                          verification = verif,
+                          supplier_info = supplier_data,
+                          desc = text)
+}
+```
+
+
+```{r}
+raw_html <- make_table(first_page)
+```
+
+
+We now need to clean this up to get verification uniquely as well seperate out the different supply information that we are interested in. 
+
+We start with verification.
+
+
+```{r}
+raw_html <- raw_html %>%
+  mutate(verification = str_replace(verification, company, "")) %>% 
+  separate(verification, into = c("thomas_ver", "covid_19"), sep="_(?=[^_]+$)")
+```
+
+Now we turn to supplier info
+
+```{r}
+raw_html <- raw_html %>% 
+  separate(supplier_info, into = c("loc_type", "var1", "var2", "var3"), sep = "_") 
+```
+
+We note that we will still need to clean up the loc_type column as that combines a facilities location with a description of the type of company, and we also need to figure out a way to identify which of var1, var2, and var3 respectively correspond to sales, company founding date, and number of employees. 
+
+With these exceptions noted, we actually have a pretty decent dataset that we can use! Lets add this element of cleaning to our make table function. 
+
+```{r}
+make_table_clean <- function(html){
+  make_table(html) %>% 
+    mutate(verification = str_replace(verification, company, "")) %>% 
+  separate(verification, into = c("thomas_ver", "covid_19"), sep="_(?=[^_]+$)") %>%
+    separate(supplier_info, into = c("loc_type", "var1", "var2", "var3"), sep = "_")
+}
+```
+
+```{r}
+test <- make_table_clean(first_page)
+```
+
+We now want to run this process over our entire list of urls for each page! We start by defining a process that will take a search URL, and turn it into a table with purpose and specific_product filled out. 
+
+```{r}
+get_thomas_data <- function(url, broad_prod, specific_product){ 
+  html <- read_html(url)
+  
+  make_table_clean(html) %>% 
+    mutate(broad_product = broad_prod, 
+           specific_product = specific_product)}
+```
+
+
+```{r}
+test <- get_thomas_data(main_url, "Face Masks", "End-Product")
+
+test %>% 
+  head(5) 
+```
+ 
+Viola! It works! 
+
+## Running over all pages of your search 
+
+Because the url string differs for the immediate search results and each subsequent page, we are going to define two different functions that we can use. 
+
+If we only have one page, we can just use the `get_thomas_data` function. 
+
+The second will be used if we have a multi-page search result. 
+
+```{r}
+get_thomas_data_plus <- function(top_url, page_url, brd_prod, spec_prod){ 
+  
+  #Read Main Page 
+  
+  first_page <- read_html(top_url)
+  
+  #Get Page Numbers
+  
+  total_pages <- get_pages(first_page)
+  
+  list_of_pages <- str_c(page_url, "pg=", 1:total_pages)
+  
+   # Apply the extraction and bind the individual results back into one table
+  
+  list_of_pages %>% 
+    # Apply to all URLs
+    map(get_thomas_data, brd_prod, spec_prod) %>% 
+    bind_rows()
+  }
+```
+
+
+```{r}
+thomas_data <- get_thomas_data_plus(main_url, pages_url, "End-Product", "Face Masks")
+```
+## Cleaning
+
+Before we finish we add two steps to finish the cleaning process. We note that some entries have multiple locations listed in Thomasnet. Because of how this is stored, this webscraper does not download those locations, and so we will need to go back and manually add those locations.
+
+We first clean up the location and location description variables. 
+
+```{r}
+fd <- thomas_data %>%
+  mutate(loc_type = str_replace(loc_type, "ico-map Locations", "Multiple Locs, NA"),
+         loc_type = str_replace(loc_type, "Custom Manufacturer", "CustomManufacturer"),
+         loc_type = str_replace(loc_type, "Finishing Service Company", "FinishingServiceCompany"),
+         loc_type = str_replace(loc_type, "Service Company", "ServiceCompany"), 
+         loc_type = str_replace(loc_type, "Turnkey Systems Integrator", "TurnkeySystemsIntegrator"), 
+         loc_type = str_replace(loc_type, "Manufacturers' Rep", "ManfacturersRep"), 
+         loc_type = str_replace(loc_type, "City of", "CityOf"),
+         loc_type = str_replace(loc_type, "City Of", "CityOf")) %>% 
+  separate(loc_type, into = c("town", "state", "type1", "type2", "type3", "type4", "type5", "type6"), sep = " ") %>% 
+  mutate(town = case_when(
+    str_length(state) > 2 ~ paste(town, state, sep = " "), 
+    TRUE ~ town),
+    state = case_when(
+      str_length(type1) == 2 ~ type1, 
+      TRUE ~ state
+    )) %>% 
+  select(-type1) %>% 
+  unite(col = "location", c("town", "state"), sep = " ") %>% 
+  mutate(location = str_replace(location, "CityOf", "City of")) %>% 
+  unite(col = "loc_desc", c("type2", "type3", "type4", "type5", "type6"), sep = " ") %>% 
+  mutate(loc_desc = str_replace_all(loc_desc, "NA", ""),
+         loc_desc = str_replace(loc_desc, "CustomManufacturer", "Custom Manufacturer"),
+         loc_desc = str_replace(loc_desc, "FinishingServiceCompany", "Finishing Service Company"),
+         loc_desc = str_replace(loc_desc, "ServiceCompany", "Service Company"), 
+         loc_desc = str_replace(loc_desc, "TurnkeySystemsIntegrator", "Turnkey Systems Integrator"), 
+         loc_desc = str_replace(loc_desc, "ManfacturersRep", "Manufacturers' Rep"))
+```
+
+We then define a unique employee and sales and date founded columns 
+
+```{r}
+final_data <- fd %>% 
+  mutate(sales = case_when(
+    str_detect(var1, "\\$") ~ var1, 
+    str_detect(var2, "\\$") ~ var2, 
+    str_detect(var3, "\\$") ~ var3
+  )) %>% 
+  mutate(employees = case_when(
+    !str_detect(var1, "\\$") & str_detect(var1, "\\-") ~ var1, 
+    !str_detect(var2, "\\$") & str_detect(var2, "\\-") ~ var2, 
+    !str_detect(var3, "\\$") & str_detect(var3, "\\-") ~ var3)) %>% 
+  mutate(date_founded = case_when(
+    str_length(str_trim(var1)) == 4 ~ str_trim(var1),
+    str_length(str_trim(var2)) == 4 ~ str_trim(var2), 
+    str_length(str_trim(var3)) == 4 ~ str_trim(var3)
+  )) %>% 
+  select(-c("var1", "var2", "var3"))
+```
+
+```{r}
+saveRDS(final_data, "Data/thomas_fm_06052020.RDS")
+```
+
+# Respirators 
+
+We now perform this same procedure for Respirators as a search term. We anticipate that there will be some overlap between the face mask category and the Respirator category, but we will determine that later, in our data cleaning an analysis sections. 
+
+## Set up 
+
+Step 1: Set up our URLs
+
+We note that the first page's url differs slightly from the urls of each individal page, so we define two base urls. 
+
+```{r}
+resp_url <- "https://www.thomasnet.com/nsearch.html?cov=NA&what=face+masks&heading=67731000&searchterm=face+masks&searchsource=https%3A%2F%2Fwww.thomasnet.com%2Fsearch.html"
+```
+
+```{r}
+resp_pages <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=67731000&searchsource=https%3A%2F%2Fwww.thomasnet.com%2Fsearch.html&searchterm=face+masks&what=face+masks&"
+```
+
+## Get the Data
+
+Since we have already defined our functions we can skip straight to getting our data. 
+
+```{r}
+thomas_resp <- get_thomas_data_plus(resp_url, resp_pages, "End-Product", "Respirators")
+```
+
+
+## Cleaning
+
+We can get straight to cleaning these data. The same cleaning procedures that we defined before should also apply to the respirators data. 
+
+We first clean up the location and location description variables. 
+
+```{r}
+fd <- thomas_resp %>%
+  mutate(loc_type = str_replace(loc_type, "ico-map Locations", "Multiple Locs, NA"),
+         loc_type = str_replace(loc_type, "Custom Manufacturer", "CustomManufacturer"),
+         loc_type = str_replace(loc_type, "Finishing Service Company", "FinishingServiceCompany"),
+         loc_type = str_replace(loc_type, "Service Company", "ServiceCompany"), 
+         loc_type = str_replace(loc_type, "Turnkey Systems Integrator", "TurnkeySystemsIntegrator"), 
+         loc_type = str_replace(loc_type, "Manufacturers' Rep", "ManfacturersRep"), 
+         loc_type = str_replace(loc_type, fixed("City of", ignore_case = TRUE), "CityOf")
+         ) %>% 
+  separate(loc_type, into = c("town", "state", "type1", "type2", "type3", "type4", "type5", "type6"), sep = " ") %>% 
+  mutate(town = case_when(
+    str_length(state) > 2 ~ paste(town, state, sep = " "), 
+    TRUE ~ town),
+    state = case_when(
+      str_length(type1) == 2 ~ type1, 
+      TRUE ~ state
+    )) %>% 
+  select(-type1) %>% 
+  unite(col = "location", c("town", "state"), sep = " ") %>% 
+  mutate(location = str_replace(location, "CityOf", "City of")) %>% 
+  unite(col = "loc_desc", c("type2", "type3", "type4", "type5", "type6"), sep = " ") %>% 
+  mutate(loc_desc = str_replace_all(loc_desc, "NA", ""),
+         loc_desc = str_replace(loc_desc, "CustomManufacturer", "Custom Manufacturer"),
+         loc_desc = str_replace(loc_desc, "FinishingServiceCompany", "Finishing Service Company"),
+         loc_desc = str_replace(loc_desc, "ServiceCompany", "Service Company"), 
+         loc_desc = str_replace(loc_desc, "TurnkeySystemsIntegrator", "Turnkey Systems Integrator"), 
+         loc_desc = str_replace(loc_desc, "ManfacturersRep", "Manufacturers' Rep"))
+```
+
+We then define a unique employee and sales and date founded columns 
+
+```{r}
+final_data <- fd %>% 
+  mutate(sales = case_when(
+    str_detect(var1, "\\$") ~ var1, 
+    str_detect(var2, "\\$") ~ var2, 
+    str_detect(var3, "\\$") ~ var3
+  )) %>% 
+  mutate(employees = case_when(
+    !str_detect(var1, "\\$") & str_detect(var1, "\\-") ~ var1, 
+    !str_detect(var2, "\\$") & str_detect(var2, "\\-") ~ var2, 
+    !str_detect(var3, "\\$") & str_detect(var3, "\\-") ~ var3)) %>% 
+  mutate(date_founded = case_when(
+    str_length(str_trim(var1)) == 4 ~ str_trim(var1),
+    str_length(str_trim(var2)) == 4 ~ str_trim(var2), 
+    str_length(str_trim(var3)) == 4 ~ str_trim(var3)
+  )) %>% 
+  select(-c("var1", "var2", "var3"))
+```
+
+```{r}
+saveRDS(final_data, "Data/thomas_resp_0605202.RDS")
+```
+
+# Intermediary Products 
+
+This will include: 
+
+* Non woven fabrics
+* Melt blown non woven fabrics
+* Medical Fabrics
+* Spunbonded Olefins
+
+And seperately, 
+
+* No Latex Elastics
+
+## Non Woven Fabrics
+
+We conduct multiple searches, extract them, and download them. For Melt-blown non woven fabrics and spunbonded olefins we can just use one page of download. For non woven fabrics and medical fabrics we use the broader function. 
+
+In this case we will combine the individual files together, check for duplicates, and then apply our cleaning procedures. 
+### Set up 
+
+We set up 6 urls:
+
+```{r}
+non_woven_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=27300201&searchsource=https%253A%252F%252Fwww.thomasnet.com%252Fsuppliers%252F&searchterm=Non-Woven+Fabrics&searchx=true&what=Non-Woven+Fabrics&which=prod"
+
+non_woven_pages <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=27300201&searchsource=https%253A%252F%252Fwww.thomasnet.com%252Fsuppliers%252F&searchterm=Non-Woven+Fabrics&what=Non-Woven+Fabrics&which=prod&"
+```
+
+```{r}
+medical_fab_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=27290907&searchsource=https%253A%252F%252Fwww.thomasnet.com%252Fnsearch.html&searchterm=medical+Fabrics&searchx=true&what=medical+Fabrics&which=prod"
+
+medical_fab_pages <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=27290907&searchsource=https%253A%252F%252Fwww.thomasnet.com%252Fnsearch.html&searchterm=medical+Fabrics&what=medical+Fabrics&which=prod&"
+```
+
+```{r}
+melt_blown_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=97010431&typed_term=melt+blown&what=Melt+Blown+Non-Woven+Fabrics&WTZO=Find+Suppliers"
+
+spunbonded_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=97006450&searchsource=https%253A%252F%252Fwww.thomasnet.com%252Fsuppliers%252F&searchterm=Spunbonded+Olefins&searchx=true&what=Spunbonded+Olefins&which=prod"
+
+```
+
+### Get the Data
+
+We now run our functions on these data. 
+
+```{r}
+spunbonded <- get_thomas_data(spunbonded_main, "Intermediary Product", "Non-Woven Fabric")
+```
+```{r}
+melt_blown <- get_thomas_data(melt_blown_main, "Intermediary Product", "Non-Woven Fabric")
+```
+
+```{r}
+medical_fab <- get_thomas_data_plus(medical_fab_main, medical_fab_pages, "Intermediary Product", "Non-Woven Fabric")
+
+non_woven <- get_thomas_data_plus(non_woven_main, non_woven_pages, "Intermediary Product", "Non-Woven Fabric")
+```
+
+### Cleaning
+
+We bind our individual data frames and filter for duplicates before we clean. We know that we can identify a unique entry based on a combination of company and description. 
+
+```{r}
+nonwoven <- bind_rows(non_woven, medical_fab) %>% 
+  bind_rows(melt_blown) %>% 
+  bind_rows(spunbonded)
+```
+
+```{r}
+nonwoven %>% 
+  group_by(company, desc) %>% 
+  count() %>% 
+  group_by(n) %>% 
+  count()
+```
+
+There are only 10 rows of overlap. 
+
+```{r}
+nonwoven_double <- nonwoven %>% 
+  group_by(company, desc) %>% 
+  count() %>% 
+  filter(n == 2) %>% 
+  mutate(specific_product = "Non-Woven Fabric", broad_product = "Intermediary Product") %>% 
+  select(-n)
+```
+
+```{r}
+nonwoven_nodup <- anti_join(nonwoven, nonwoven_double, by = "company") %>% 
+  bind_rows(nonwoven_double)
+```
+
+We can now apply our other cleaning procedures to this data frame. 
+
+
+```{r}
+nonwoven_fd <- nonwoven_nodup %>%
+  mutate(loc_type = str_replace(loc_type, "ico-map Locations", "Multiple Locs, NA"),
+         loc_type = str_replace(loc_type, "Custom Manufacturer", "CustomManufacturer"),
+         loc_type = str_replace(loc_type, "Finishing Service Company", "FinishingServiceCompany"),
+         loc_type = str_replace(loc_type, "Service Company", "ServiceCompany"), 
+         loc_type = str_replace(loc_type, "Turnkey Systems Integrator", "TurnkeySystemsIntegrator"), 
+         loc_type = str_replace(loc_type, "Manufacturers' Rep", "ManfacturersRep"), 
+         loc_type = str_replace(loc_type, fixed("City of", ignore_case = TRUE), "CityOf")
+         ) %>% 
+  separate(loc_type, into = c("town", "state", "type1", "type2", "type3", "type4", "type5", "type6"), sep = " ") %>% 
+  mutate(town = case_when(
+    str_length(state) > 2 ~ paste(town, state, sep = " "), 
+    TRUE ~ town),
+    state = case_when(
+      str_length(type1) == 2 ~ type1, 
+      TRUE ~ state
+    )) %>% 
+  select(-type1) %>% 
+  unite(col = "location", c("town", "state"), sep = " ") %>% 
+  mutate(location = str_replace(location, "CityOf", "City of")) %>% 
+  unite(col = "loc_desc", c("type2", "type3", "type4", "type5", "type6"), sep = " ") %>% 
+  mutate(loc_desc = str_replace_all(loc_desc, "NA", ""),
+         loc_desc = str_replace(loc_desc, "CustomManufacturer", "Custom Manufacturer"),
+         loc_desc = str_replace(loc_desc, "FinishingServiceCompany", "Finishing Service Company"),
+         loc_desc = str_replace(loc_desc, "ServiceCompany", "Service Company"), 
+         loc_desc = str_replace(loc_desc, "TurnkeySystemsIntegrator", "Turnkey Systems Integrator"), 
+         loc_desc = str_replace(loc_desc, "ManfacturersRep", "Manufacturers' Rep"))
+```
+
+We then define a unique employee and sales and date founded columns 
+
+```{r}
+nonwoven_final <- nonwoven_fd %>% 
+  mutate(sales = case_when(
+    str_detect(var1, "\\$") ~ var1, 
+    str_detect(var2, "\\$") ~ var2, 
+    str_detect(var3, "\\$") ~ var3
+  )) %>% 
+  mutate(employees = case_when(
+    !str_detect(var1, "\\$") & str_detect(var1, "\\-") ~ var1, 
+    !str_detect(var2, "\\$") & str_detect(var2, "\\-") ~ var2, 
+    !str_detect(var3, "\\$") & str_detect(var3, "\\-") ~ var3)) %>% 
+  mutate(date_founded = case_when(
+    str_length(str_trim(var1)) == 4 ~ str_trim(var1),
+    str_length(str_trim(var2)) == 4 ~ str_trim(var2), 
+    str_length(str_trim(var3)) == 4 ~ str_trim(var3)
+  )) %>% 
+  select(-c("var1", "var2", "var3"))
+```
+
+```{r}
+saveRDS(nonwoven_final, "Data/nonwoven_0605202.RDS")
+```
+
+## No Latex Elastic 
+
+We now do this same procedure for no latex elastics. 
+
+### Set Up 
+
+```{r}
+no_latex_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=95928206&typed_term=non-latex+&what=Non-Latex+Elastics&WTZO=Find+Suppliers"
+```
+
+### Get the Data
+
+```{r}
+no_latex <- get_thomas_data(no_latex_main, "Intermediary Product", "No Latex Elastic")
+```
+
+### Cleaning
+
+We can go straight to cleaning. 
+
+```{r}
+nolatex_fd <- no_latex %>%
+  mutate(loc_type = str_replace(loc_type, "ico-map Locations", "Multiple Locs, NA"),
+         loc_type = str_replace(loc_type, "Custom Manufacturer", "CustomManufacturer"),
+         loc_type = str_replace(loc_type, "Finishing Service Company", "FinishingServiceCompany"),
+         loc_type = str_replace(loc_type, "Service Company", "ServiceCompany"), 
+         loc_type = str_replace(loc_type, "Turnkey Systems Integrator", "TurnkeySystemsIntegrator"), 
+         loc_type = str_replace(loc_type, "Manufacturers' Rep", "ManfacturersRep"), 
+         loc_type = str_replace(loc_type, fixed("City of", ignore_case = TRUE), "CityOf")
+         ) %>% 
+  separate(loc_type, into = c("town", "state", "type1", "type2", "type3", "type4", "type5", "type6"), sep = " ") %>% 
+  mutate(town = case_when(
+    str_length(state) > 2 ~ paste(town, state, sep = " "), 
+    TRUE ~ town),
+    state = case_when(
+      str_length(type1) == 2 ~ type1, 
+      TRUE ~ state
+    )) %>% 
+  select(-type1) %>% 
+  unite(col = "location", c("town", "state"), sep = " ") %>% 
+  mutate(location = str_replace(location, "CityOf", "City of")) %>% 
+  unite(col = "loc_desc", c("type2", "type3", "type4", "type5", "type6"), sep = " ") %>% 
+  mutate(loc_desc = str_replace_all(loc_desc, "NA", ""),
+         loc_desc = str_replace(loc_desc, "CustomManufacturer", "Custom Manufacturer"),
+         loc_desc = str_replace(loc_desc, "FinishingServiceCompany", "Finishing Service Company"),
+         loc_desc = str_replace(loc_desc, "ServiceCompany", "Service Company"), 
+         loc_desc = str_replace(loc_desc, "TurnkeySystemsIntegrator", "Turnkey Systems Integrator"), 
+         loc_desc = str_replace(loc_desc, "ManfacturersRep", "Manufacturers' Rep"))
+```
+
+We then define a unique employee and sales and date founded columns 
+
+```{r}
+nolatex_final <- nolatex_fd%>% 
+  mutate(sales = case_when(
+    str_detect(var1, "\\$") ~ var1, 
+    str_detect(var2, "\\$") ~ var2, 
+    str_detect(var3, "\\$") ~ var3
+  )) %>% 
+  mutate(employees = case_when(
+    !str_detect(var1, "\\$") & str_detect(var1, "\\-") ~ var1, 
+    !str_detect(var2, "\\$") & str_detect(var2, "\\-") ~ var2, 
+    !str_detect(var3, "\\$") & str_detect(var3, "\\-") ~ var3)) %>% 
+  mutate(date_founded = case_when(
+    str_length(str_trim(var1)) == 4 ~ str_trim(var1),
+    str_length(str_trim(var2)) == 4 ~ str_trim(var2), 
+    str_length(str_trim(var3)) == 4 ~ str_trim(var3)
+  )) %>% 
+  select(-c("var1", "var2", "var3"))
+```
+
+```{r}
+saveRDS(nolatex_final, "Data/nolatex_06052020.RDS")
+```
+
+# Conclusion 
+
+This file webscrapes Thomasnet to get the US supplier data for key layers in the Face Mask/Respirator supply chains. 
+
+We turn to the tidy_thomas.rmd file to continue our work of cleaning and analyzing these data.
+
+We turn to the prepare_for_maps.rmd file to prepare all of our data for mapping. 

@@ -1,0 +1,633 @@
+---
+title: "Alibaba Product Data"
+author: "Nikhil Kalathil"
+date: "6/7/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This file will define a procedure to clean and sort Alibaba product data. Below is a brief summary of the data: 
+
+As of 06/06/2020, these searches return the following number of entries: 
+
+* procedural masks: 96
+* medical masks: 800
+* n95 masks: 800
+* respirators: 152
+* meltblown fabric: 880
+* spunbonded fabric: 800
+* ear loops: 280
+* nose bridges: 320
+
+There is a discrepancy between these numbers and the numbers of prodcts listed on Alibaba, but for now, this will have to do. With this many products, hopefully we can still assemble a somewhat complete picture of the product space. 
+
+```{r, include = FALSE}
+library(tidyverse)
+library(rvest)
+library(rebus)
+library(lubridate)
+library(data.table)
+library(here)
+library(tidytext)
+library(tm)
+```
+
+# Load data
+
+When we load our data, we will also impute a variable `search_product`, which will denote the search variable used on Alibaba. 
+
+We will then remove duplicates and analyze the Alibaba product space. 
+
+Key questions include: 
+
+* How many unique companies are there? 
+* How many products does one company make? 
+* What product types are there? 
+* How well can we categorize products based on product description? 
+  * Can we use clustering alogrothims to create different prodcut definitions/clusters? 
+
+Let us begin. 
+
+## End Products
+
+### N95 and Respirators
+
+We start with respirators. We used two terms for respirators `n95` and `resipirators`. 
+
+* n95 masks: 800
+* respirators: 152
+
+#### Load the Data
+
+```{r}
+n95_masks <- readRDS(here("Data/n95_ab.RDS"))
+```
+
+```{r}
+resp <- readRDS(here("Data/ab_resp.RDS"))
+```
+
+We count, define search products, merge, and then remove duplicates. 
+
+
+```{r}
+n95_masks %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  group_by(n) %>% 
+  count()
+```
+
+Lets take a look at the 4 repeats. 
+
+```{r}
+n95_masks %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  filter(n == 2) %>% 
+  left_join(n95_masks) %>% 
+  view()
+```
+
+We notice that the entries we want to keep have more information about price per unit. 
+
+```{r}
+n95_masks %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  filter(n == 2) %>% 
+  left_join(n95_masks) %>%
+  select(price_per_unit)
+```
+
+```{r}
+n95_masks_nodup <- n95_masks %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  left_join(n95_masks, .) %>% 
+  mutate(drop_ind = case_when(
+    n == 2 & str_detect(price_per_unit, "Carton|Piece|Set", negate = TRUE) ~ "DROP")
+    ) %>% 
+  filter(is.na(drop_ind))
+  
+```
+
+#### Company Information
+
+Now, let us count how many companies we have. 
+
+```{r}
+n95_masks_nodup %>% 
+  group_by(company) %>% 
+  count() %>% 
+  select(company, n) %>% 
+  arrange(n)
+  
+```
+
+We immediately notice that there are 8 companies that produce all 800 products in our dataset. This is very intersting. We perform some manual review of descriptions. 
+
+
+```{r}
+n95_comp <- n95_masks_nodup %>% 
+  group_by(company) %>% 
+  count() %>% 
+  left_join(n95_masks_nodup, .)
+```
+The first thing that we notice is many entries in our dataset our actually mask making machines!
+
+#### Remove Machines
+
+```{r}
+n95_comp %>% 
+  filter(str_detect(product, fixed("machine", ignore_case = TRUE))) %>% 
+  group_by(price_per_unit) %>% 
+  count() %>% 
+  group_by(n) %>% 
+  count()
+           
+```
+
+A fun thing to note is that some of these machines are available for under $2,000 per set! There is a high variety in what these machines are used for, from end product machines down to machines to make individul intermediary products such as ear loops. 
+
+We separate out these data and then remove them from our main data frame. 
+
+```{r}
+n95_comp <- n95_comp %>% 
+  mutate(search_product = "N95 Masks")
+
+n95_machines <- n95_comp %>% 
+    filter(str_detect(product, fixed("machine", ignore_case = TRUE)))
+
+n95_clean1 <- anti_join(n95_comp, n95_machines)
+  
+```
+
+```{r}
+n95_machines %>% 
+  count()
+```
+
+We see that machines are actually a huge component of our dataset. Before we continue with our analysis, let us also add data for respirators. 
+
+#### Repeat for Respirators
+
+
+```{r}
+resp %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  group_by(n) %>% 
+  count()
+```
+
+Lets take a look at these repeats. 
+
+```{r}
+resp %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  filter(n >= 2) %>% 
+  left_join(resp) %>%  
+  view() 
+```
+
+```{r}
+resp %>% 
+  group_by(company, product) %>% 
+  mutate(count = seq(n())) %>% 
+  arrange(-count) %>% 
+  head(5)
+```
+
+```{r}
+resp_nodup <- resp %>% 
+  group_by(company, product) %>% 
+  mutate(count = seq(n())) %>% 
+  filter(count == 1)
+```
+
+```{r}
+resp_comp <- resp_nodup %>% 
+  group_by(company) %>% 
+  mutate(n = sum(n()), 
+         search_product = "respirator")
+```
+
+We separate out the machine data and then merge both with the n95 products. 
+
+```{r}
+resp_machine <- resp_comp %>% 
+    filter(str_detect(product, fixed("machine", ignore_case = TRUE)))
+
+resp_clean1 <- anti_join(resp_comp, resp_machine)
+  
+```
+
+```{r}
+resp_tot <- bind_rows(resp_clean1, n95_clean1)
+
+mach_tot <- bind_rows(resp_machine, n95_machines)
+```
+
+```{r}
+resp_tot %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  arrange(-n) %>% 
+  head(5)
+```
+
+```{r}
+resp_tot <- resp_tot %>% 
+  group_by(company, product) %>% 
+  mutate(count = seq(n())) %>% 
+  filter(count == 1) %>% 
+  ungroup()
+```
+
+#### FDA Specs
+
+We will now attempt to specify if our product meets FDA or other technical specs.  
+
+We define three categories: 
+
+1. Affirmatively meets FDA needs/technical specs
+2. Potentiall meets FDA needs/technical specs
+3. NA
+
+```{r}
+resp_clean <- resp_tot %>% 
+  mutate(product = str_replace(product, fixed("covid 19", ignore_case = TRUE), "covid-19"), 
+         product = str_replace(product, fixed("non woven", ignore_case = TRUE), "nonwoven"), 
+         product = str_replace(product, fixed("melt blown", ignore_case = TRUE), "meltblown"),
+         product = str_replace(product, fixed("spun bond", ignore_case = TRUE), "spunbond"))
+```
+
+
+```{r}
+resp_fda <- resp_clean %>% 
+  mutate(useful = case_when(
+        str_detect(product, fixed("N95", ignore_case = TRUE)) | 
+        str_detect(product, fixed("ISO", ignore_case = FALSE)) |
+        str_detect(product, fixed("ASTM", ignore_case = FALSE))|
+        str_detect(product, fixed("ANSI", ignore_case = FALSE)) |
+        str_detect(product, fixed("AAMI", ignore_case = FALSE)) |
+        str_detect(product, "FDA") |
+        str_detect(product, "NIOSH") |
+        str_detect(product, "801") |
+        str_detect(product, "KN95") |
+        str_detect(product, fixed("3-ply", ignore_case = FALSE)) | 
+        str_detect(product, fixed("meltblown", ignore_case = FALSE)) |
+        str_detect(product, fixed("spunbond", ignore_case = FALSE))~ "Affirmatively"))
+```
+
+```{r}
+saveRDS(resp_fda, here("Data/Cleaned/ab_resp.RDS"))
+```
+
+### Face Masks
+
+We now repeat this procedure for face masks, which consit of two searches: procedural masks and medical masks. 
+
+#### Load the Data
+
+```{r}
+proc_masks <- readRDS(here("Data/proc_masks.RDS"))
+```
+
+```{r}
+med_masks <- readRDS(here("Data/med_masks.RDS"))
+```
+
+We count, define search products, merge, and then remove duplicates. In this case, before continuing we will bind the two together under a "face mask" search string. 
+
+```{r}
+masks <- bind_rows(proc_masks, med_masks) %>% 
+  mutate(search_product = "Face Masks")
+```
+
+We now look for repeats. 
+
+```{r}
+masks %>% 
+  group_by(company, product, price_per_unit) %>% 
+  count() %>% 
+  group_by(n) %>% 
+  count()
+```
+```{r}
+masks %>% 
+  group_by(company, product, price_per_unit) %>%
+  count() %>% 
+  filter(n == 2) %>% 
+  left_join(masks) %>% 
+  view()
+```
+```{r}
+masks_nodup <- masks %>% 
+  group_by(company, product, price_per_unit) %>%
+  mutate(count = seq(n())) %>% 
+  filter(count == 1) %>% 
+  ungroup()
+```
+
+
+#### Remove Machines
+
+```{r}
+
+mask_machines <- masks_nodup %>% 
+    filter(str_detect(product, fixed("machine", ignore_case = TRUE)))
+
+mask_clean1 <- anti_join(masks_nodup, mask_machines)
+           
+```
+
+```{r}
+machines_all <- bind_rows(mach_tot, mask_machines)
+```
+
+#### FDA Specs
+
+We will now attempt to specify if our product meets FDA or other technical specs.  
+
+We define three categories: 
+
+1. Affirmatively meets FDA needs/technical specs
+2. Potentiall meets FDA needs/technical specs
+3. NA
+
+```{r}
+masks_clean <- mask_clean1 %>% 
+  mutate(product = str_replace(product, fixed("covid 19", ignore_case = TRUE), "covid-19"), 
+         product = str_replace(product, fixed("non woven", ignore_case = TRUE), "nonwoven"), 
+         product = str_replace(product, fixed("melt blown", ignore_case = TRUE), "meltblown"),
+         product = str_replace(product, fixed("spun bond", ignore_case = TRUE), "spunbond"))
+```
+
+
+```{r}
+masks_fda <- masks_clean %>% 
+  mutate(useful = case_when(
+        str_detect(product, fixed("N95", ignore_case = TRUE)) | 
+        str_detect(product, fixed("ISO", ignore_case = FALSE)) |
+        str_detect(product, fixed("ASTM", ignore_case = FALSE))|
+        str_detect(product, fixed("ANSI", ignore_case = FALSE)) |
+        str_detect(product, fixed("AAMI", ignore_case = FALSE)) |
+        str_detect(product, "FDA") |
+        str_detect(product, "NIOSH") |
+        str_detect(product, "801") |
+        str_detect(product, "KN95") |
+        str_detect(product, fixed("3-ply", ignore_case = FALSE)) | 
+        str_detect(product, fixed("meltblown", ignore_case = FALSE)) |
+        str_detect(product, fixed("spunbond", ignore_case = FALSE))~ "Affirmatively"))
+```
+
+Before we save this, let us just make sure there are no redundancies with our respirator data. 
+
+```{r}
+end_prod <- bind_rows(masks_fda, resp_fda) %>% 
+  mutate(broad_product = "End Product")
+```
+
+```{r}
+end_prod %>% 
+  group_by(company, product, price_per_unit) %>%
+  count()  %>% 
+  view()
+```
+
+A manual review tells us there are no repeats
+
+```{r}
+saveRDS(end_prod, here("Data/Cleaned/ab_end_prods.RDS"))
+```
+
+## Intermediary Products
+
+We now perform this same process for intermediary products. 
+
+### Fabrics
+
+#### Load the Data
+
+```{r}
+meltblown <- readRDS(here("Data/ab_meltblown.RDS")) %>% 
+  mutate(search_product = "Meltblown Fabric")
+```
+
+```{r}
+spunbonded <- readRDS(here("Data/ab_spunbonded.RDS")) %>% 
+  mutate(search_product = "Spunbonded Fabric")
+```
+
+```{r}
+fabrics <- bind_rows(meltblown, spunbonded) %>% 
+  filter(!is.na(product))
+```
+
+
+```{r}
+fabrics %>% 
+  group_by(company, product) %>%
+  count() %>% 
+  group_by(n) %>% 
+  count()
+```
+
+```{r}
+fabrics %>% 
+  group_by(company, product, price_per_unit) %>%
+  count() %>% 
+  left_join(fabrics, .) %>% 
+  view()
+```
+
+```{r}
+fabrics_nodup <- fabrics %>% 
+  group_by(company, product, price_per_unit) %>%
+  mutate(count = seq(n())) %>% 
+  filter(count == 1) %>% 
+  ungroup()
+```
+
+#### Remove Machines
+
+```{r}
+
+fabric_machines <- fabrics_nodup %>% 
+    filter(str_detect(product, fixed("machine", ignore_case = TRUE)))
+
+fabric_clean1 <- anti_join(fabrics_nodup, fabric_machines)
+```
+```{r}
+machines_all <- bind_rows(machines_all, fabric_machines)
+```
+
+#### FDA Specs
+
+We now turn to identifying entries that meet either the technical or FDA specs. We have to use a slightly different definition in this case. 
+
+```{r}
+fabric_clean <- fabric_clean1 %>% 
+   mutate(product = str_replace(product, fixed("spun bonded", ignore_case = TRUE), "spunbonded"), 
+           product = str_replace(product, fixed("spun-bonded", ignore_case = TRUE), "spunbonded"), 
+           product = str_replace(product, fixed("melt blown", ignore_case = TRUE), "meltblown"),
+           product = str_replace(product, fixed("melt-blown", ignore_case = TRUE), "meltblown"), 
+           product = str_replace(product, fixed("needlepunch", ignore_case = TRUE), "needle punch")) %>% 
+    mutate(useful = case_when(
+      str_detect(product, fixed("gsm", ignore_case = TRUE)) |
+        str_detect(product, fixed("spunbonded", ignore_case = TRUE)) | 
+        str_detect(product, fixed("needle punch", ignore_case = TRUE)) | 
+        str_detect(product, fixed("meltblown", ignore_case = TRUE)) |
+      str_detect(product, "ISO") |
+        str_detect(product, fixed("polypropylene", ignore_case = TRUE)) |
+        str_detect(product, fixed("spunlace", ignore_case = TRUE)) |
+        str_detect(product, fixed("hydroentangled", ignore_case = TRUE)) |
+         str_detect(product, fixed("ghz", ignore_case = TRUE)) |
+        str_detect(product, fixed("electrospun", ignore_case = TRUE))  ~ "Affirmatively"))
+```
+
+We note that all the entires is our search meet these specs. As such, we will need to define more specific search parameters. Since products sometimes describe the GSM, we could look into classfying fabrics by what end-level mask they could be usefd to produce. 
+
+```{r}
+saveRDS(fabric_clean, here("Data/Cleaned/ab_fabrics.RDS"))
+```
+
+### Loops and Bindings
+
+#### Load the Data
+
+```{r}
+loops <- readRDS(here("Data/ear_loops.RDS")) %>% 
+  mutate(search_product = "Ear Loops")
+```
+
+```{r}
+bridge <- readRDS(here("Data/nose_bridge.RDS")) %>% 
+  mutate(search_product = "Nose Bridge")
+```
+
+```{r}
+loops_bridges <- bind_rows(loops, bridge) %>% 
+  filter(!is.na(product))
+```
+
+```{r}
+loops_bridges %>% 
+  group_by(company, product) %>%
+  count() %>% 
+  group_by(n) %>% 
+  count()
+```
+```{r}
+loops_bridges %>% 
+  group_by(company, product, price_per_unit) %>%
+  count() %>% 
+  left_join(loops_bridges, .) %>% 
+  view()
+```
+```{r}
+loops_bridges_nodup <- loops_bridges %>% 
+  group_by(company, product, price_per_unit) %>%
+  mutate(count = seq(n())) %>% 
+  filter(count == 1)
+```
+
+#### Remove Machines
+
+```{r}
+
+lb_machines <- loops_bridges_nodup %>% 
+    filter(str_detect(product, fixed("machine", ignore_case = TRUE)))
+
+lb_clean1 <- anti_join(loops_bridges_nodup, lb_machines)
+           
+```
+
+```{r}
+machines_all <- bind_rows(machines_all, lb_machines)
+```
+
+```{r}
+saveRDS(lb_clean1, here("Data/Cleaned/loops_bridges.RDS"))
+```
+
+
+```{r}
+int_prod <- bind_rows(fabric_clean1, lb_clean1) %>% mutate(broad_product = "Intermediary Product")
+```
+
+```{r}
+saveRDS(int_prod, here("Data/Cleaned/ab_int_prod.RDS"))
+```
+
+## Machines
+
+We now remove duplicate machines. 
+
+```{r}
+machines_all %>% 
+  group_by(company, product) %>% 
+  count() %>% 
+  view()
+```
+
+The entries seem to be all uniuque. 
+
+
+### FDA Specs 
+
+```{r}
+machines_clean <- machines_all %>% 
+  mutate(product = str_replace(product, fixed("covid 19", ignore_case = TRUE), "covid-19"), 
+         product = str_replace(product, fixed("non woven", ignore_case = TRUE), "nonwoven"), 
+         product = str_replace(product, fixed("melt blown", ignore_case = TRUE), "meltblown"),
+         product = str_replace(product, fixed("spun bond", ignore_case = TRUE), "spunbond"),
+         product = str_replace(product, fixed("needlepunch", ignore_case = TRUE), "needle punch"))%>% 
+  mutate(useful = case_when(
+        str_detect(product, fixed("N95", ignore_case = TRUE)) | 
+        str_detect(product, fixed("ISO", ignore_case = FALSE)) |
+        str_detect(product, fixed("ASTM", ignore_case = FALSE))|
+        str_detect(product, fixed("ANSI", ignore_case = FALSE)) |
+        str_detect(product, fixed("AAMI", ignore_case = FALSE)) |
+        str_detect(product, "FDA") |
+        str_detect(product, "NIOSH") |
+        str_detect(product, "801") |
+        str_detect(product, "KN95") |
+        str_detect(product, fixed("3-ply", ignore_case = FALSE)) | 
+        str_detect(product, fixed("meltblown", ignore_case = FALSE)) |
+        str_detect(product, fixed("spunbond", ignore_case = FALSE))~ "Affirmatively"))
+```
+
+
+```{r}
+machines_clean %>% 
+  group_by(useful) %>% 
+  count()
+```
+
+```{r}
+machines_clean %>% 
+  filter(is.na(useful)) %>% 
+  view()
+```
+
+
+```{r}
+machines_clean %>% 
+  mutate(broad_product = "Machine") %>% 
+  saveRDS(here("Data/Cleaned/ab_machines.RDS"))
+```
+
+An analysis of this "useful" classification reveals that there are machines that are not in the `useful == "Affirmatively"` category that will nonethless be of interest, conversely, for end and intermediate products, we can likely drop entries that are not affirmatively useful. 
+

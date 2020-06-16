@@ -1,0 +1,333 @@
+---
+title: "AB Analysis"
+author: "Nikhil Kalathil"
+date: "6/7/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include = FALSE}
+library(tidyverse)
+library(rvest)
+library(rebus)
+library(lubridate)
+library(data.table)
+library(here)
+library(tidytext)
+library(tm)
+library(ggthemes)
+library(RColorBrewer)
+library(tidymodels)
+```
+
+This document begins to analyze cleaned Alibaba product data. We work from three data frames: 
+
+* End Products
+* Intermediary Products
+* Machines
+
+```{r}
+end_prod <- readRDS(here("Data/Cleaned/ab_end_prods.RDS")) %>% 
+  filter(!is.na(useful))
+int_prod <- readRDS(here("Data/Cleaned/ab_int_prod.RDS"))
+machines <- readRDS(here("Data/Cleaned/ab_machines.RDS"))
+```
+
+```{r}
+ab_all <- bind_rows(end_prod, int_prod) %>% 
+  bind_rows(machines) %>% 
+  mutate(product_cat = case_when(
+    broad_product == "Machine" ~ "Machine",
+    search_product %in% c("respirator", "N95 Masks") ~ "Respirator", 
+    search_product == "Face Masks" ~ "Face Masks",
+    broad_product == "Intermediary Product" ~ search_product
+    ))
+```
+
+```{r}
+ab1 <- ab_all %>% 
+  group_by(broad_product, company, product_cat) %>% 
+  count() %>% 
+  ggplot(aes(n, fill = product_cat)) +
+  geom_histogram()+ 
+  facet_wrap(~broad_product) + 
+  labs(x = "Number of Products", y = "Number of Companies", title = "Companies and Products, Alibaba", fill = "Broad Product") +
+  theme_bw()
+```
+
+How many unique companies do we have, and how many products do they produce? 
+
+```{r}
+comps <- ab_all %>% 
+  group_by(broad_product, company, product_cat) %>% 
+  count(name = "individual_products") %>% 
+  group_by(company) %>% 
+  mutate(total_prods = sum(individual_products)) %>% 
+  group_by(company, total_prods)
+```
+
+```{r}
+length(unique(comps$company))
+```
+We see that we have 16 companies in our dataset. 
+
+```{r}
+ab2 <- comps %>% 
+  ungroup() %>% 
+  ggplot(aes(company, total_prods, label = company, fill = product_cat, group = company)) + 
+  geom_col(position = "stack", color = "black", alpha = 0.5) +
+  coord_flip() + 
+  facet_wrap(~broad_product) + 
+  labs(title = "Companies and Their Products, by Broad Product Category", subtitle = "Alibaba, 06/06/2020", y = "Number of Unique Products", fill = "Broad Product") + 
+  theme_hc()
+```
+
+# Classifying Machines
+
+We also notice that in our machines data, there are machines for every level of the supply chain. Searches for one product, returned machines for another product. We will need to come up with a way of classifying which products the machines are being used for. 
+
+We know that we have five product classes: 
+
+* Respirators
+* Face Masks
+* Nowoven Fabrics
+* Ear Loops
+* Nose Bridges
+
+Within each product class, there are a spectrum of products. Ultimately, we would like to be able to place individual products along that spectrum. First, we will focus on classyfying products in the first place. 
+
+## Initial Overview
+
+```{r}
+ab_all_tm <- ab_all %>% 
+  select(-c(useful, count, n, drop_ind, id)) 
+```
+
+Our plan will be to first build our model using non-machine data. Let us take a look at the words in our data. 
+
+
+
+```{r}
+ab_words <- ab_all %>% 
+  unnest_tokens(word, product)
+```
+
+
+```{r}
+stop_words <- stop_words %>% 
+  filter(!word %in% c("beyond", "changes",  "contains", "containing", "contain", "nearly", "only", "novel", "plus", "possible", "particular", "particularly", "provides", "probably")) %>% 
+  filter(lexicon == "SMART")
+```
+
+We also create a list of "product" words that tell us useful information but do not allow us much differentiation between groups. 
+
+```{r}
+product_words <- as.data.frame(c("covid", "coronavirus", "N95", "KN95", "mask", "masks", "cloth", "surgical", "medical", "ppe", "disposable", "19", "dust", "industrial", "gloves", "gowns", "respirators", "face", "include", "product", "equipment", "supplies", "including", "safety", "respirator", "protective", "brands", "kn95", "3m", "full", "brands", "covid-19", "valve", "shields", "products", "n95", "reusable", "facepiece", "protection", "dental", "devices", "care", "glasses", "kits", "clothing", "air", "breathing", "filter", "eye", "respiratory", "valves", "nose", "head", "hand", "goggles", "filters", "latex", "ply", "sanitizer", "crisis"))
+
+colnames(product_words) <- "word"
+```
+
+
+```{r}
+tidy_ab <- ab_words %>% 
+  anti_join(stop_words) %>% 
+  filter(word != "19") %>% 
+  mutate(word = str_replace(word, "covid", "covid-19"))
+```
+```{r}
+tidy_ab %>% 
+  filter(broad_product == "End Product") %>% 
+  group_by(word, product_cat) %>% 
+  count() %>% 
+  filter(n > 30) %>% 
+  ggplot(aes(word, n, fill = word)) + 
+  geom_col(position = "dodge")+ 
+  coord_flip() +
+  facet_wrap(~product_cat) + 
+  labs(title = "Top Words for Alibaba End Products") + 
+  theme_bw()
+```
+
+```{r}
+tidy_ab %>% 
+  filter(broad_product == "Intermediary Product") %>% 
+  group_by(word, product_cat) %>% 
+  count() %>% 
+  filter(n > 70) %>% 
+  ggplot(aes(word, n, fill = word)) + 
+  geom_col(position = "dodge")+ 
+  coord_flip() +
+  facet_wrap(~product_cat) + 
+  labs(title = "Top Words for Alibaba Intermediary Products") + 
+  theme_bw() + 
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+```
+
+```{r}
+tidy_ab %>% 
+  filter(broad_product == "Machine", !word %in% c("machine", "making", "mask")) %>% 
+  group_by(word, product_cat) %>% 
+  count() %>% 
+  filter(n > 50) %>% 
+  ggplot(aes(word, n, fill = word)) + 
+  geom_col(position = "dodge")+ 
+  coord_flip() +
+  facet_wrap(~product_cat) + 
+  labs(title = "Top Words for Alibaba Machines") + 
+  theme_bw() 
+```
+
+Our goal is to use the non-machine data to classify machines by the product that they make. 
+
+```{r}
+set.seed(94703)
+
+ab_model <- ab_all_tm %>% 
+  filter(product_cat != "Machine") %>% 
+  select(-c(company, search_product, broad_product))
+```
+
+```{r}
+ab_model %>% 
+  group_by(product) %>% 
+  count() %>% 
+  group_by(n) %>% 
+  count()
+```
+
+In general, we see that there are 1697 unique products in our dataset. There are a few repeat entries. 
+
+When grouping by price per unit and minium order, there are even fewer repeats. 
+
+```{r}
+ab_model %>% 
+  group_by(product, price_per_unit, minimum_order) %>% 
+  count() %>% 
+  group_by(n) %>% 
+  count()
+```
+
+Thus, to build this model, we will primarily rely on the words in our product descriptions. We use the tidymodels packages to break out individal words and remove stop words. 
+
+
+```{r}
+tidy_ab <- tidy_ab %>% 
+  mutate_if(is.character, factor) %>% 
+  select(product_cat, word)
+```
+
+Our goal is to predict search product, based on the other attributes of our data. We will drop company as a predictor. 
+
+```{r}
+ab_split <- initial_split(tidy_ab)
+
+ab_train <- training(ab_split) 
+ab_test <- testing(ab_split)
+
+```
+
+```{r}
+ab_rec <- recipe(product_cat ~., data = ab_train) %>% 
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_zv(all_numeric()) %>%
+  step_normalize(all_numeric()) %>%
+  prep()
+```
+
+We then fit a k-nearest neighbor model, as well as a random forest model. 
+
+```{r}
+knn_spec <- nearest_neighbor() %>%
+  set_engine("kknn") %>%
+  set_mode("classification")
+
+knn_fit <- knn_spec %>%
+  fit(product_cat ~ ., data = juice(ab_rec))
+
+knn_fit
+```
+
+```{r}
+tree_spec <- decision_tree() %>%
+  set_engine("rpart") %>%
+  set_mode("classification")
+
+tree_fit <- tree_spec %>%
+  fit(product_cat ~ ., data = juice(ab_rec))
+
+tree_fit
+```
+We now attempt to validate our models. 
+
+```{r}
+test_proc <- bake(ab_rec, new_data = ab_test)
+```
+
+
+```{r}
+fit1 <- knn_fit %>%
+  predict(new_data = test_proc, type = "prob") %>%
+  mutate(truth = ab_test$product_cat) 
+```
+
+
+```{r}
+set.seed(94703)
+validation_splits <- mc_cv(juice(ab_rec), prop = 0.9, strata = product_cat)
+validation_splits
+```
+
+```{r}
+knn_res <- fit_resamples(
+  product_cat ~ .,
+  knn_spec,
+  validation_splits,
+  control = control_resamples(save_pred = TRUE)
+)
+
+knn_res %>%
+  collect_metrics()
+```
+
+
+```{r}
+tree_res <- fit_resamples(
+  product_cat ~ .,
+  tree_spec,
+  validation_splits,
+  control = control_resamples(save_pred = TRUE)
+)
+
+tree_res %>%
+  collect_metrics()
+```
+
+```{r}
+knn_res %>%
+  unnest(.predictions) %>%
+  mutate(model = "kknn") %>%
+  bind_rows(tree_res %>%
+    unnest(.predictions) %>%
+    mutate(model = "rpart")) %>%
+  group_by(model) %>%
+  roc_curve(product_cat, .product_cat) %>%
+  ggplot(aes(x = 1 - specificity, y = sensitivity, color = model)) +
+  geom_line(size = 1.5) +
+  geom_abline(
+    lty = 2, alpha = 0.5,
+    color = "gray50",
+    size = 1.2
+  )
+```
+
+
+# Text Analysis 

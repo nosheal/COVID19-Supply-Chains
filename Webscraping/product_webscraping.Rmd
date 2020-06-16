@@ -1,0 +1,349 @@
+---
+title: "Product Webscraping"
+subtitle: "Face Masks and Respirators" 
+author: "Nikhil Kalathil"
+date: "6/5/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document will contain a program to webscrape and format product search data from both [Grainger](https://www.grainger.com/) and [Alibaba](https://www.alibaba.com/). The results of this program are not complete and require additional cleaning/manual data entry, but this program should solve the problem of needing to download large Thomasnet searches. 
+
+```{r, include = FALSE}
+library(tidyverse)
+library(rvest)
+library(rebus)
+library(lubridate)
+library(data.table)
+```
+
+# Introduction 
+
+Estimating supply capacity from readily available data is a difficult task, especially when considering industries with many privately traded firms activiely making products. One way to estimate capacity is to work backwards from products. 
+
+Through explorations of Thomasnet supplier data and a deep dive into the manufacturing process for masks, we have identified specific search terms to identify products of interest in the Face Mask and Respirators product line. 
+
+We divide the supply chain for Face Masks and Respirators into two levels: 
+
+* End Products
+  * Face Masks
+  * Respirators
+* Intermediary Products
+  * Nonwoven Fabrics
+  * No latex elastics
+  
+## Extracting Product Lists
+
+We begin by creating a list of products that we are particularly interested in through searches of Alibaba and Grainger. After reviewing both sites, we will run the following searches: 
+
+* Grainger
+  * End Products
+    * Procedural Masks
+    * Disposable Respirators and Dust Masks
+
+Grainger does not have enough entries for intermediary products. 
+
+* Alibaba
+  * End Products
+    * ASTM Level masks
+    * procedural masks
+    * respirators
+    * dust masks
+  * Intermediary Products
+    * spunbonded fabric
+    * meltblown fabric
+
+These searches were explicility created to attempt to yield the greatest percentage of possible results as possible, with the hope that a good percent of the whole universe of products will be covered by these searches. In designing these searches, we also wanted to limit the number of results from products such as "cloth masks" that would pollute our data. 
+
+In general, we attempt to extract the following infromation for each product: 
+
+* Product Name
+* Company Producing
+* Price per Unit
+
+
+## Grainger Searches
+
+For Grainger searches we can also get the manufacturing model number. 
+
+
+
+
+## Alibaba Searches
+
+For Alibaba searches we can also get the minimum order number. 
+
+We develop our procedure using "procedural masks" as an example as there are only 791 results. Other searches we will run will have thousands of results. 
+
+```{r}
+test_url <- "https://www.alibaba.com/trade/search?fsb=y&IndexArea=product_en&CatId=&SearchText=procedural+masks&viewtype=&tab="
+```
+
+```{r}
+html_test <- read_html(test_url)
+```
+
+
+We define functions for each of these four points: 
+
+```{r}
+get_product <- function(html){ 
+  
+  html %>%
+    html_nodes(".organic-gallery-title__content") %>%
+    html_text() %>% 
+    unlist()
+    
+}
+
+get_price <- function(html){ 
+  
+  html %>% 
+    html_nodes(".gallery-offer-price") %>% 
+    html_text() %>% 
+    unlist()
+    
+  
+}
+
+get_order <- function(html){
+  
+  html %>% 
+    html_nodes(".gallery-offer-minorder") %>%
+    html_text() %>% 
+    unlist()
+}
+
+```
+
+Let us test this out. We notice that the last bit of information, company name, is a bit more difficult to obtain. 
+
+```{r}
+test_product <- get_product(html_test)
+test_price <- get_price(html_test)
+test_ord <- get_order(html_test)
+```
+
+We now turn to getting company information. Because this object is stored uniquely, we have to employ a different approach to get it. 
+
+```{r}
+get_company <- function(html) {
+  
+  test_comp <- html_test %>% 
+  html_nodes("div") %>%
+  html_nodes(".organic-list-offer-right")
+  
+  comp <- c()
+
+  i = 1
+
+  while (i <= length(test_comp)){
+  
+    comp[i] <- test_comp[[i]] %>% 
+    
+      html_node("a") %>% 
+      html_attr("title")
+    i = i + 1
+  }
+  
+  return(comp)
+}
+```
+
+```{r}
+test_company <- get_company(html_test)
+```
+
+We now need to turn each of these entries into a data frame. We define a function for this as well: 
+
+```{r}
+make_table <- function(html){
+  
+  prod <- get_product(html)
+  prc <- get_price(html)
+  ordr <- get_order(html)
+  comp <- get_company(html)
+  
+  combined_data <-data.table(company = comp,
+                          product = prod,
+                          price_per_unit = prc,
+                          minimum_order = ordr)
+}
+```
+
+```{r}
+make_table(html_test) %>% 
+  head(5)
+```
+
+It worked! 
+
+We now want to run this process over our entire list of urls for each page! We start by defining a process that will take a search URL, and turn it into a table with purpose and specific_product filled out. 
+
+```{r}
+get_alibaba_data <- function(url){ 
+  html <- read_html(url)
+  
+  make_table(html)
+}
+```
+
+```{r}
+get_alibaba_data(test_url) %>% 
+  head(5)
+```
+
+We now define a function to run this over all relevant pages in our search. 
+
+```{r}
+get_alibaba_all <- function(page_url, pages){ 
+
+  
+  list_of_pages <- str_c(page_url, "page=", 1:pages)
+  
+   # Apply the extraction and bind the individual results back into one table
+  
+  list_of_pages %>% 
+    # Apply to all URLs
+    map(get_alibaba_data) %>% 
+    bind_rows()
+  }
+```
+
+```{r}
+procedural_masks <- "https://www.alibaba.com/products/procedural_masks.html?IndexArea=product_en&"
+```
+
+```{r}
+get_alibaba_all(procedural_masks, pages = 12) %>% 
+  head(5)
+```
+
+We now have our function to run! Let us perform this same procedure for our specified searches.
+
+### Running the Searches
+
+```{r}
+procedural_masks <- "https://www.alibaba.com/products/procedural_masks.html?IndexArea=product_en&"
+```
+
+```{r}
+proc_masks <- get_alibaba_all(procedural_masks, pages = 12)
+```
+
+```{r}
+saveRDS(proc_masks, "Data/proc_masks.RDS")
+```
+
+```{r}
+medical_masks <- 
+  "https://www.alibaba.com/products/medical_mask.html?IndexArea=product_en&"
+```
+
+```{r}
+med_masks <- get_alibaba_all(medical_masks, pages = 100)
+```
+
+```{r}
+saveRDS(med_masks, "Data/med_masks.RDS")
+```
+
+```{r}
+n95 <- "https://www.alibaba.com/products/n95.html?IndexArea=product_en&"
+```
+
+```{r}
+n95_masks <- get_alibaba_all(n95, pages = 100)
+```
+
+```{r}
+saveRDS(n95_masks, "Data/n95_ab.RDS")
+```
+
+```{r}
+respirators <- "https://www.alibaba.com/products/respirator.html?IndexArea=product_en&"
+```
+
+```{r}
+resp <- get_alibaba_all(respirators, pages = 19)
+```
+
+```{r}
+saveRDS(resp, "Data/ab_resp.RDS")
+```
+
+
+```{r}
+meltblown_fabric <- "https://www.alibaba.com/products/meltblown_nonwoven_fabric.html?IndexArea=product_en&"
+```
+
+```{r}
+meltblown <- get_alibaba_all(meltblown_fabric, pages = 110)
+```
+
+```{r}
+saveRDS(meltblown, "Data/ab_meltblown.RDS")
+```
+
+```{r, eval = FALSE}
+spunbonded_fabric <- 
+  "https://www.alibaba.com/products/spunbond.html?IndexArea=product_en&"
+```
+
+```{r, eval = FALSE}
+spunbonded <- get_alibaba_all(spunbonded_fabric, pages = 100)
+```
+
+```{r}
+saveRDS(spunbonded, "Data/ab_spunbonded.RDS")
+```
+
+
+```{r, eval = FALSE}
+earloops <- "https://www.alibaba.com/products/elastic_ear_loops.html?IndexArea=product_en&"
+```
+
+```{r, eval = FALSE}
+ear_loops <- get_alibaba_all(earloops, pages = 35)
+```
+
+```{r, eval = FALSE}
+saveRDS(ear_loops, "Data/ear_loops.RDS")
+```
+
+
+```{r, eval = FALSE}
+nosebridge <- "https://www.alibaba.com/products/nose_bridge.html?IndexArea=product_en&"
+```
+
+```{r}
+nose_bridge <- get_alibaba_all(nosebridge, pages = 35)
+```
+
+```{r, eval = FALSE}
+saveRDS(nose_bridge, "Data/nose_bridge.RDS")
+```
+
+As of 06/06/2020, these searches return the following number of entries: 
+
+* procedural masks: 96
+* medical masks: 800
+* n95 masks: 800
+* respirators: 152
+* meltblown fabric: 880
+* spunbonded fabric: 800
+* ear loops: 280
+* nose bridges: 320
+
+There is a discrepancy between these numbers and the numbers of prodcts listed on Alibaba, but for now, this will have to do. With this many products, hopefully we can still assemble a somewhat complete picture of the product space. 
+
+The next steps will be cleaning the data for duplicates and then categorize products based on their purpose. 
+

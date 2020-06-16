@@ -28,57 +28,23 @@ library(widgetframe)
 
 This documentuses previously defined procedures for geolocating and structuring to prepare data for the domestic Mask supply chain from Thomasnet. Before we can map our data we need to clean and structure it. 
 
-We have three data frames to clean and join: `nolatex`, `nonwoven`, and `fm_resp` (which in turn relies on `resp` and `thomas_fm`). Of these, nonlatex and nonwoven need to first be cleaned by broad location category. 
+We have two data frames to clean and join: `int_prod` (which relies on`nolatex`, `nonwoven`), and `fm_resp` (which in turn relies on `resp` and `thomas_fm`). 
 
 We must then deal with observations with missing locations. Some of these observations are stores in secondary levels that we will have to determine how to investigate. 
 
-## Cleaning the Data (preprocessing)
-
-
-```{r}
-nonwoven <- readRDS("Data/nonwoven_05302020.RDS")
-nolatex <- readRDS("Data/nolatex_05302020.RDS")
-```
-
-Based on a manual review of the data in these searches, we don't have as much a need to refine our product definitions and categories. Since we have already dealt with duplicates, all that remains is to define the broad location type. 
-
-```{r}
-int_prod <- bind_rows(nonwoven, nolatex)
-```
-
-
-```{r}
-int_prod_struc <- int_prod %>% 
-  mutate(broad_loc = case_when(
-    str_detect(loc_desc, "Manufacturer\\*") ~ "Primary Manufacturer", 
-    str_detect(loc_desc, "Manufacturer") & str_detect(loc_desc, "Manufacturer\\*", negate = TRUE) &
-      str_detect(loc_desc, "Manufacturers' Rep", negate = TRUE) ~ "Secondary Manufacturer",
-    str_detect(loc_desc, "Distributor") | str_detect(loc_desc, "Manufacturers' Rep*") ~ "Distributor", 
-    str_detect(loc_desc, "Manufacturer", negate = TRUE) & str_detect(loc_desc, "Manufacturer\\*", negate = TRUE) &
-      str_detect(loc_desc, "Manufacturers' Rep", negate = TRUE) & 
-      str_detect(loc_desc, "Distributor", negate = TRUE) &
-      str_detect(loc_desc, "Manufacturers' Rep*", negate = TRUE) ~ "Other"))
-```
-
-```{r}
-int_prod_struc %>% 
-  group_by(specific_product) %>% 
-  count()
-```
-
-
-```{r}
-saveRDS(int_prod_struc, "Data/int_prod.RDS")
-```
-
 ## Merge with End Products  
+
+```{r}
+int_prod <- readRDS("Data/int_prod.RDS")
+```
+
 
 ```{r}
 resp_fm <- readRDS("Data/fm_resp.RDS")
 ```
 
 ```{r}
-us_supply <- bind_rows(resp_fm, int_prod_struc) %>% 
+us_supply <- bind_rows(resp_fm, int_prod) %>% 
   mutate(broad_product = str_replace(broad_product, "End-Product", "End Product"))
 ```
 
@@ -142,7 +108,7 @@ us_supply_maps <- anti_join(us_supply, mult_locs)
 We then begin the process of geocoding. We will use [Google's geolocating service](https://developers.google.com/maps/documentation/geocoding/intro) to process our geolocation requests. To use this service, we need to get an [API key](https://developers.google.com/maps/documentation/geocoding/get-api-key)
 
 ```{r, echo = FALSE, Include = FALSE}
-api_key <- c("YOUR_KEY")
+api_key <- c("AIzaSyA1pwzK3BaX7_um-_TUrS7aGfCHQvp68b8")
 ```
 
 We define our function, which will take an address as an input and output a latitude and longitude result. 
@@ -219,7 +185,7 @@ us_supply_geocoded %>%
   filter(is.na(lat)) %>% 
   count()
 ```
-Fortunately, again, out of our 1167 observations, only 70 return as with an invalid address. We add this to the same task as imputing multiple location data. 
+Fortunately, again, out of our 1043 observations, only 64 return as with an invalid address. We add this to the same task as imputing multiple location data. 
 
 Save this as a new object to prepare for leaflet plotting. In doing so we want to define as identifying factors for this layer as possible. We want our final object to have the following format: 
 
@@ -242,7 +208,7 @@ us_supply_geocoded <- us_supply_geocoded %>%
   mutate(covid_resp = case_when((covid_19 == "COVID-19 RESPONSE" | covid_desc == TRUE | str_detect(desc, fixed("medical", ignore_case = TRUE))|
                                    str_detect(desc, fixed("surgical", ignore_case = TRUE))|
                                    str_detect(desc, fixed("hospital", ignore_case = TRUE))) ~ "Yes", 
-                                TRUE ~ "No"))
+                                TRUE ~ "Unknown"))
 ```
 
 ```{r}
@@ -265,8 +231,10 @@ prepare_for_maps <- function(name, df) {
                                     df$company, "<br>",
                                     "Country of Ownership:",
                                     df$ownership, "<br>",
-                                    "Currently Participating in COVID-19 Response?", 
+                                    "Affirmatively Participating in COVID-19 Response?", 
                                     df$covid_resp, "<br>",
+                                    "Meets FDA/Technical Specs?", 
+                                    df$useful, "<br>",
                                     "Company Type:", 
                                     df$broad_loc, "<br>",
                                     "Address:", 

@@ -16,6 +16,18 @@ library(RColorBrewer)
 
 df_for_maps <- readRDS("Data/df_for_maps.rds")
 
+df_for_maps_words <- df_for_maps %>% 
+  unnest_tokens(word, desc)
+
+stop_words <- stop_words %>% 
+  filter(!word %in% c("beyond", "changes",  "contains", "containing", "contain", "nearly", "only", "novel", "plus", "possible", "particular", "particularly", "provides", "probably")) %>% 
+  filter(lexicon == "SMART")
+
+tidy_maps <- df_for_maps_words %>% 
+  anti_join(stop_words) %>% 
+  filter(word != "19") %>% 
+  mutate(word = str_replace(word, "covid", "covid-19"))
+
 # define colors
 
 sc_color <- colorFactor(c("cadetblue", "darkblue", "blue", "purple", "green", "darkgreen"), domain = df_for_maps$specific_product)
