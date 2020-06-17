@@ -24,6 +24,7 @@ library(htmlwidgets)
 library(RJSONIO)
 library(readxl)
 library(widgetframe)
+library(here)
 ```
 
 This documentuses previously defined procedures for geolocating and structuring to prepare data for the domestic Mask supply chain from Thomasnet. Before we can map our data we need to clean and structure it. 
@@ -35,17 +36,16 @@ We must then deal with observations with missing locations. Some of these observ
 ## Merge with End Products  
 
 ```{r}
-int_prod <- readRDS("Data/int_prod.RDS")
+int_prod <- readRDS(here("Data/Cleaned/int_prod.RDS"))
 ```
 
 
 ```{r}
-resp_fm <- readRDS("Data/fm_resp.RDS")
+resp_fm <- readRDS(here("Data/Cleaned/fm_resp.RDS"))
 ```
 
 ```{r}
-us_supply <- bind_rows(resp_fm, int_prod) %>% 
-  mutate(broad_product = str_replace(broad_product, "End-Product", "End Product"))
+us_supply <- bind_rows(resp_fm, int_prod)
 ```
 
 ```{r}
@@ -108,7 +108,7 @@ us_supply_maps <- anti_join(us_supply, mult_locs)
 We then begin the process of geocoding. We will use [Google's geolocating service](https://developers.google.com/maps/documentation/geocoding/intro) to process our geolocation requests. To use this service, we need to get an [API key](https://developers.google.com/maps/documentation/geocoding/get-api-key)
 
 ```{r, echo = FALSE, Include = FALSE}
-api_key <- c("AIzaSyA1pwzK3BaX7_um-_TUrS7aGfCHQvp68b8")
+api_key <- c("YOUR_KEY")
 ```
 
 We define our function, which will take an address as an input and output a latitude and longitude result. 
@@ -161,7 +161,7 @@ for(i in 1:nrow(origAddress))
 We immediately save these results. 
 
 ```{r}
-saveRDS(origAddress, "geocoded_5302020")
+saveRDS(origAddress, here("Data/Cleaned/geocoded_5302020"))
 ```
 
 Let us see how well we did. 
@@ -227,31 +227,31 @@ us_supply_geocoded %>%
 prepare_for_maps <- function(name, df) {
   name <- df %>% 
     mutate(layerId = paste(broad_loc, row_number(), sep = '.'),
-                      popup = paste("Company Name:",
+                      popup = paste("<strong>Company Name:</strong>",
                                     df$company, "<br>",
-                                    "Country of Ownership:",
+                                    "<strong>Country of Ownership:</strong>",
                                     df$ownership, "<br>",
-                                    "Affirmatively Participating in COVID-19 Response?", 
+                                    "<strong>Affirmatively Participating in COVID-19 Response?</strong>", 
                                     df$covid_resp, "<br>",
-                                    "Meets FDA/Technical Specs?", 
+                                    "<strong>Meets FDA/Technical Specs?</strong>", 
                                     df$useful, "<br>",
-                                    "Company Type:", 
+                                    "<strong>Company Type:</strong>", 
                                     df$broad_loc, "<br>",
-                                    "Address:", 
+                                    "<strong>Address:</strong>", 
                                     df$address, "<br>",
-                                    "Broad Product:", 
+                                    "<strong>Broad Product:</strong>", 
                                     df$broad_product, "<br>",
-                                    "Specific Product:", 
+                                    "<strong>Specific Product:</strong>", 
                                     df$specific_product, "<br>",
-                                    "Capacity:", 
+                                    "<strong>Capacity:</strong>", 
                                     df$product_capacity, "<br>",
-                                    "Lead Times:",
+                                    "<strong>Lead Times:</strong>",
                                     df$lead_time, "<br>",
-                                    "Production Details:", 
+                                    "<strong>Production Details:</strong>", 
                                     df$desc, "<br>",
-                                    "Number of Employees:", 
+                                    "<strong>Number of Employees:</strong>", 
                                     df$employees, "<br>",
-                                    "Annual Sales:", 
+                                    "<strong>Annual Sales:</strong>", 
                                     df$sales, "<br>"
                                     ), 
            group = broad_loc)
@@ -273,12 +273,12 @@ We now save our outputs to the locations that our other files can draw from.
 ### For mapping output only
 
 ```{r}
-saveRDS(df_for_maps, "Data/df_for_maps.rds")
+saveRDS(df_for_maps, here("Data/Cleaned/df_for_maps.rds"))
 ```
 
 ### For shiny integration and searching 
 
 ```{r}
-saveRDS(df_for_maps, "Leaflet_Searching/Data/df_for_maps.rds")
+saveRDS(df_for_maps, here("Leaflet_Searching/Data/df_for_maps.rds"))
 ```
 

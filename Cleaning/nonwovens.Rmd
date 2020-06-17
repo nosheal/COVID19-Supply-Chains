@@ -20,6 +20,7 @@ library(tidytext)
 library(RColorBrewer)
 library(ggthemes)
 library(tm)
+library(here)
 ```
 
 # Nonwovens
@@ -33,16 +34,13 @@ This document will take as an input a Thomasnet search for a set of nonwoven fab
 
 We will attempt to identify which companies in these four categories can provide nonwoven fabrics that meet the needs of high-filtration face masks (ASTM 2-5). 
 
-```{r}
-int_prod <- readRDS("Data/int_prod.RDS")
-```
 
 ## Cleaning the Data (preprocessing)
 
 
 ```{r}
-nonwoven <- readRDS("Data/nonwoven_05302020.RDS")
-nolatex <- readRDS("Data/nolatex_05302020.RDS")
+nonwoven <- readRDS(here("Data/nonwoven_05302020.RDS"))
+nolatex <- readRDS(here("Data/nolatex_05302020.RDS"))
 ```
 
 Based on a manual review of the data in these searches, we don't have as much a need to refine our product definitions and categories. Since we have already dealt with duplicates, all that remains is to define the broad location type. 
@@ -161,11 +159,10 @@ cat_1 <- function(data) {
         str_detect(desc, fixed("needle punch", ignore_case = TRUE)) | 
         str_detect(desc, fixed("meltblown", ignore_case = TRUE)) |
       str_detect(desc, "ISO") |
-        str_detect(desc, fixed("polypropylene", ignore_case = TRUE)) |
-        str_detect(desc, fixed("spunlace", ignore_case = TRUE)) |
-        str_detect(desc, fixed("hydroentangled", ignore_case = TRUE)) |
-         str_detect(desc, fixed("ghz", ignore_case = TRUE)) |
-        str_detect(desc, fixed("electrospun", ignore_case = TRUE))  ~ "cat_1"))
+      str_detect(desc, fixed("spunlace", ignore_case = TRUE)) |
+      str_detect(desc, fixed("hydroentangled", ignore_case = TRUE)) |
+      str_detect(desc, fixed("ghz", ignore_case = TRUE)) |
+      str_detect(desc, fixed("electrospun", ignore_case = TRUE))  ~ "cat_1"))
 }
   
 ```
@@ -190,6 +187,7 @@ cat_2 <- function(data) {
         str_detect(desc, fixed("medical", ignore_case = TRUE)) | 
         str_detect(desc, fixed("surgical", ignore_case = TRUE)) |
         str_detect(desc, fixed("dental", ignore_case = TRUE)) |
+        str_detect(desc, fixed("polypropylene", ignore_case = TRUE)) |
         str_detect(desc, "dust"))  ~ "cat_2")) %>% 
     mutate(cat_2 = case_when(
       cat_1 == "cat_1" ~ NA_character_,
@@ -303,7 +301,7 @@ int_prod_struc %>%
 
 
 ```{r}
-saveRDS(int_prod_struc, "Data/int_prod.RDS")
+saveRDS(int_prod_struc, here("Data/Cleaned/int_prod.RDS"))
 ```
 
 

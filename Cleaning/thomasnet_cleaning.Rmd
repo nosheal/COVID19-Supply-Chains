@@ -20,6 +20,7 @@ library(tidytext)
 library(RColorBrewer)
 library(ggthemes)
 library(tm)
+library(here)
 ```
 
 
@@ -44,14 +45,14 @@ Our first task is to distinguish the difference in overlap between our "Face Mas
 To do this we import both data sets, combine them, and then filter down to distinct company rows. 
 
 ```{r}
-thomas_fm <- readRDS("Data/thomas_fm_05292020.RDS")
+thomas_fm <- readRDS(here("Data/thomas_fm_05292020.RDS"))
 
 thomas_fm %>% 
   count() 
 ```
 
 ```{r}
-thomas_resp <- readRDS("Data/thomas_resp_05292020.RDS")
+thomas_resp <- readRDS(here("Data/thomas_resp_05292020.RDS"))
 
 thomas_resp %>% 
   count()
@@ -510,7 +511,7 @@ thomas_an <- left_join(thomas_struc, cap_lead)
 
 
 ```{r}
-saveRDS(thomas_an, here("Data/fm_resp.RDS"))
+saveRDS(thomas_an, here("Data/Cleaned/fm_resp.RDS"))
 ```
 
 

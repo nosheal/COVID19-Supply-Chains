@@ -11,10 +11,11 @@ library(widgetframe)
 library(leaflet.esri)
 library(lattice)
 library(RColorBrewer)
+library(here)
 
 #Load the Data
 
-df_for_maps <- readRDS("Data/df_for_maps.rds")
+df_for_maps <- readRDS(here("Data/Cleaned/df_for_maps.rds"))
 
 df_for_maps_words <- df_for_maps %>% 
   unnest_tokens(word, desc)

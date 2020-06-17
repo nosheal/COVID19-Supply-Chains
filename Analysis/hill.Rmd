@@ -72,8 +72,7 @@ fig2 <- hill %>%
 
 ```{r}
 fig3 <- hill %>% 
-  mutate(specific_product = str_replace(specific_product, "Face", "Medical"), 
-         broad_product = if_else(broad_product == "End-Product", "End Product", broad_product)) %>% 
+  mutate(specific_product = str_replace(specific_product, "Face", "Medical")) %>% 
   mutate(specific_product = if_else(specific_product == "Non-Woven Fabric", "Meltblown/Spunbonded Fabric", specific_product)) %>% 
   group_by(broad_product, specific_product) %>% 
   filter(specific_product != "NA") %>% 

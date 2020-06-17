@@ -22,16 +22,17 @@ library(widgetframe)
 library(lattice)
 library(DT)
 library(tidytext)
+library(here)
 
 #Load the Data
 
-df_for_maps <- readRDS("Data/df_for_maps.rds")
+df_for_maps <- readRDS(here("Data/df_for_maps.rds"))
 
 measure <- c("None", "Confirmed Cases", "Deaths")
 demand <- as.data.frame(measure)
 demand$demand_id <- c(0,1,2)
 
-df_for_maps_words <- readRDS("Data/words.RDS")
+df_for_maps_words <- readRDS(here("Data/words.RDS"))
 
 sc_color <- colorFactor(c("cadetblue", "darkblue", "blue", "purple", "green", "darkgreen"), domain = df_for_maps$specific_product)
 

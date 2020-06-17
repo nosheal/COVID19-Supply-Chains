@@ -21,6 +21,7 @@ library(tidyverse)
 library(rvest)
 library(rebus)
 library(lubridate)
+library(here)
 ```
 
 # Face Masks
@@ -297,7 +298,7 @@ final_data <- fd %>%
 ```
 
 ```{r}
-saveRDS(final_data, "Data/thomas_fm_06052020.RDS")
+saveRDS(final_data, here("Data/thomas_fm_06162020.RDS"))
 ```
 
 # Respirators 
@@ -385,7 +386,7 @@ final_data <- fd %>%
 ```
 
 ```{r}
-saveRDS(final_data, "Data/thomas_resp_0605202.RDS")
+saveRDS(final_data, here("Data/thomas_resp_0616202.RDS"))
 ```
 
 # Intermediary Products 
@@ -535,7 +536,7 @@ nonwoven_final <- nonwoven_fd %>%
 ```
 
 ```{r}
-saveRDS(nonwoven_final, "Data/nonwoven_0605202.RDS")
+saveRDS(nonwoven_final, here("Data/nonwoven_06162020.RDS"))
 ```
 
 ## No Latex Elastic 
@@ -610,7 +611,7 @@ nolatex_final <- nolatex_fd%>%
 ```
 
 ```{r}
-saveRDS(nolatex_final, "Data/nolatex_06052020.RDS")
+saveRDS(nolatex_final, here("Data/nolatex_06162020.RDS"))
 ```
 
 # Conclusion 

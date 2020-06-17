@@ -22,52 +22,171 @@ library(RColorBrewer)
 library(ggthemes)
 library(tm)
 library(here)
+library(ggrepel)
 ```
 
 ```{r}
-thomas_struc <- readRDS(here("Data/fm_resp.RDS"))
+thomas_an <- readRDS(here("Data/Cleaned/fm_resp.RDS"))
+int_prod <- readRDS(here("Data/Cleaned/int_prod.RDS"))
 ```
 
-
+This document analyzes cleaned thomasnet data. Thomasnet data provides a picture of the US supply chain for specific categories. In this document, we focus on analyzing the face mask/respirator supply chain. 
 
 ```{r}
 my_pal <- c("cadetblue", "darkblue", "green", "darkgreen", "darkgrey")
 ```
 
+# Summary plots
+
+We begin with summary plots of our data. 
+
+```{r}
+thomas_struc <- bind_rows(int_prod, thomas_an)
+```
+
+
+## All Companies
+
+The first figures display counts for all products in our dataset. 
+
+```{r}
+fig1 <- thomas_struc %>% 
+  group_by(broad_product, specific_product) %>% 
+  filter(specific_product != "NA") %>% 
+  count() %>% 
+  mutate(pos = case_when(
+    specific_product == "Respirators and Face Masks" ~ 1, 
+    specific_product == "Face Masks Only" ~ 2, 
+    specific_product == "Respirators Only" ~ 3, 
+    specific_product == "Non-Woven Fabric" ~ 5, 
+    specific_product == "No Latex Elastic" ~ 6,
+    specific_product == "Cloth Masks" ~ 4, 
+  )) %>% 
+  ggplot(aes(reorder(specific_product, -pos), n, fill = specific_product, label = n)) +
+  geom_col(position = "dodge", show.legend = FALSE) + 
+  geom_label(show.legend = FALSE) +
+  scale_fill_brewer(palette = "Set2") +
+  theme_bw() + 
+  coord_flip() + 
+  labs(title = "Number of Suppliers by Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product")
+
+fig1
+```
+
+## Segmenting by FDA Requirements
 
 ```{r}
 thomas_struc %>% 
-  group_by(specific_product) %>% 
-  count() %>% 
-  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
-  geom_col() + 
+  filter(!is.na(useful)) %>% 
+  mutate(useful = case_when(
+    useful == "Affirmatively" ~ "Affirmatively Meets FDA Specs", 
+    useful == "Possibly" ~ "Possibly Meets FDA Specs"
+  )) %>% 
+  group_by(broad_product, specific_product, useful) %>% 
+  filter(specific_product != "NA") %>% 
+  count() %>%   
+  mutate(pos = case_when(
+    specific_product == "Respirators and Face Masks" ~ 1, 
+    specific_product == "Face Masks Only" ~ 2, 
+    specific_product == "Respirators Only" ~ 3, 
+    specific_product == "Non-Woven Fabric" ~ 5, 
+    specific_product == "No Latex Elastic" ~ 6,
+    specific_product == "Cloth Masks" ~ 4, 
+  ))  %>% 
+  ggplot(aes(reorder(specific_product, -pos), n, fill = specific_product, label = n)) +
+  geom_col(position = "dodge", show.legend = FALSE) + 
   geom_label(show.legend = FALSE) +
+  scale_fill_brewer(palette = "Set2") +
   theme_bw() + 
-  labs(title = "Number of Suppliers by Specific End Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "Total N = 1226", fill = "Specific Product") + 
-  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
+  coord_flip() + 
+  facet_wrap(~useful) +
+  labs(title = "Number of Suppliers by Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") 
+
+```
+
+## Differentiating by supplier types
+
+We then turn to differentiating by supplier types to look at the proportion of companies that are distributors compared to manufacturers. 
+
+```{r}
+my_pal <- c(brewer.pal(3, "Set3")[2], brewer.pal(3, "Set3")[1], "grey")
 ```
 
 ```{r}
-sup_type <- thomas_struc %>%
-  filter(useful %in% c("Affirmatively")) %>% 
-  filter(!is.na(specific_product)) %>% 
-  group_by(broad_loc, specific_product) %>% 
+sup1 <- thomas_struc %>% 
+  filter(useful %in% c("Affirmatively"), specific_product != "Cloth Masks") %>% 
+  mutate(broad_loc = case_when(
+    str_detect(broad_loc, "Manuf") ~ "Manufacturer", 
+    str_detect(broad_loc, "Dist") ~ "Distributor",
+    TRUE ~ "Other/Unknown"
+  )) %>% 
+  group_by(broad_product, specific_product, broad_loc) %>% 
+  filter(specific_product != "NA") %>% 
   count() %>% 
-  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
-  geom_col() + 
-  facet_wrap(~broad_loc) + 
-  geom_label(show.legend = FALSE) +
+  ungroup() %>% 
+  mutate(pos = case_when(
+    specific_product == "Respirators and Face Masks" ~ 1, 
+    specific_product == "Face Masks Only" ~ 2, 
+    specific_product == "Respirators Only" ~ 3, 
+    specific_product == "Non-Woven Fabric" ~ 4, 
+    specific_product == "No Latex Elastic" ~ 5
+  )) %>% 
+  ggplot(aes(reorder(specific_product, -pos), n, fill = broad_loc, group = broad_loc)) +
+  geom_col(position = "dodge") + 
+  geom_label(position=position_dodge(width=1), aes(label = n), show.legend = FALSE) +
+  scale_fill_manual(values = my_pal) +
+  geom_vline(xintercept = 2.5) +
   theme_bw() + 
-  labs(title = "Number of FDA Approved Suppliers by Specific End Product Type", subtitle = "by Supplier Type, Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
-  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
+  coord_flip() + 
+  ggplot2:: annotate("label", x = 2.8, y = 85, label = "End Products") + 
+    ggplot2:: annotate("label", x = 1.8, y = 85, label = "Intermediary Products") + 
+  labs(title = "Number of Suppliers by Product and Supplier Type", subtitle = "Affirmatively Meeting FDA Specs, Thomasnet 5/29/20", y = "", x = "", fill = "Supplier Type") 
 ```
 
-An immediate question that we are interested in is: for face masks and respirators, what percent of US firms are manufacturers compared to distributors? 
+
+```{r}
+sup2 <- thomas_struc %>% 
+  filter(useful %in% c("Affirmatively", "Possibly"), specific_product != "Cloth Masks") %>% 
+  mutate(broad_loc = case_when(
+    str_detect(broad_loc, "Manuf") ~ "Manufacturer", 
+    str_detect(broad_loc, "Dist") ~ "Distributor",
+    TRUE ~ "Other/Unknown"
+  )) %>% 
+  group_by(broad_product, specific_product, broad_loc) %>% 
+  filter(specific_product != "NA") %>% 
+  count() %>% 
+  ungroup() %>% 
+  mutate(pos = case_when(
+    specific_product == "Respirators and Face Masks" ~ 1, 
+    specific_product == "Face Masks Only" ~ 2, 
+    specific_product == "Respirators Only" ~ 3, 
+    specific_product == "Non-Woven Fabric" ~ 4, 
+    specific_product == "No Latex Elastic" ~ 5
+  )) %>% 
+  ggplot(aes(reorder(specific_product, -pos), n, fill = broad_loc, group = broad_loc)) +
+  geom_col(position = "dodge") + 
+  geom_label(position=position_dodge(width=1), aes(label = n), show.legend = FALSE) +
+  scale_fill_manual(values = my_pal) +
+  geom_vline(xintercept = 2.5) +
+  theme_bw() + 
+  coord_flip() + 
+  ggplot2:: annotate("label", x = 2.8, y = 85, label = "End Products") + 
+    ggplot2:: annotate("label", x = 1, y = 85, label = "Intermediary Products") + 
+  labs(title = "Number of Suppliers by Product and Supplier Type", subtitle = "Affirmatively or Possibly Meeting FDA Specs, Thomasnet 5/29/20", y = "", x = "", fill = "Supplier Type") 
+```
+
+
+### Proportions
 
 ```{r}
 thomas_struc %>%
   filter(useful %in% c("Affirmatively")) %>% 
   filter(!is.na(specific_product)) %>% 
+  mutate(broad_loc = case_when(
+    str_detect(broad_loc, "Manuf") ~ "Manufacturer", 
+    str_detect(broad_loc, "Dist") ~ "Distributor",
+    TRUE ~ "Other/Unknown"
+  )) %>% 
   group_by(broad_loc, specific_product) %>% 
   count() %>% 
   ungroup() %>% 
@@ -75,60 +194,71 @@ thomas_struc %>%
   mutate(prop = n / sum (n)) %>%
   filter(specific_product %in% c("Respirators and Face Masks", "Face Masks Only", "Respirators Only")) %>% 
   mutate(lab_prop = round(case_when(
-    broad_loc == "Primary Manufacturer" ~ prop
+    broad_loc == "Manufacturer" ~ prop
   ),2)) %>% 
   ggplot(aes(specific_product, prop, fill = broad_loc, label = lab_prop)) +
   geom_col(position = "stack") + 
   geom_label(show.legend = FALSE) + 
-  scale_fill_brewer(palette = "Set3", na.value = "grey") + 
+  scale_fill_manual(values = my_pal) +
   coord_flip() +
   theme_bw() + 
   labs(title = "Prop of US Suppliers of End Products, \nby Supplier Type", subtitle = "Affirmatively meets FDA Specs, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
 ```
 
-
-
-### Intermediary Products
-
 We are interested in performing a similar analysis on intermediary products. 
 
 ```{r}
-int_prod <- readRDS("Data/int_prod.RDS")
-```
-
-```{r}
-int_prod %>%
-  filter(useful == "Affirmatively") %>% 
-  group_by(specific_product) %>% 
-  count() %>% 
-  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
-  geom_col() + 
-  geom_label(show.legend = FALSE) +
-  theme_bw() + 
-  scale_fill_brewer(palette = "Set2") +
-  labs(title = "Number of Suppliers by Intermediary Product Type", subtitle = "Affirmatively Useful, Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
-  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
-```
-
-```{r}
-int_prod %>%
-  filter(useful == "Affirmatively") %>% 
-  filter(!is.na(specific_product)) %>% 
+thomas_struc %>%
+  filter(useful %in% c("Affirmatively")) %>% 
+  filter(!is.na(specific_product)) %>%
+  mutate(broad_loc = case_when(
+    str_detect(broad_loc, "Manuf") ~ "Manufacturer", 
+    str_detect(broad_loc, "Dist") ~ "Distributor",
+    TRUE ~ "Other/Unknown"
+  )) %>% 
   group_by(broad_loc, specific_product) %>% 
   count() %>% 
   ungroup() %>% 
   group_by(specific_product) %>% 
   mutate(prop = n / sum (n)) %>%
+  filter(!specific_product %in% c("Respirators and Face Masks", "Face Masks Only", "Respirators Only", "Cloth Masks")) %>% 
   mutate(lab_prop = round(case_when(
-    broad_loc == "Primary Manufacturer" ~ prop
+    broad_loc == "Manufacturer" ~ prop
   ),2)) %>% 
   ggplot(aes(specific_product, prop, fill = broad_loc, label = lab_prop)) +
   geom_col(position = "stack") + 
   geom_label(show.legend = FALSE) + 
-  scale_fill_brewer(palette = "Set3", na.value = "grey") + 
+  scale_fill_manual(values = my_pal) +
   coord_flip() +
   theme_bw() + 
-  labs(title = "Prop of US Suppliers of Intermediary Products, \nby Supplier Type", subtitle = "Affirmatively Useful, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
+  labs(title = "Prop of US Suppliers of Intermediary Products, \nby Supplier Type", subtitle = "Affirmatively meets FDA Specs, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
+```
+
+```{r}
+thomas_struc %>%
+  filter(useful %in% c("Affirmatively", "Possibly")) %>% 
+  filter(!is.na(specific_product)) %>% 
+  mutate(broad_loc = case_when(
+    str_detect(broad_loc, "Manuf") ~ "Manufacturer", 
+    str_detect(broad_loc, "Dist") ~ "Distributor",
+    TRUE ~ "Other/Unknown"
+  )) %>% 
+  group_by(broad_loc, specific_product) %>% 
+  count() %>% 
+  ungroup() %>% 
+  group_by(specific_product) %>% 
+  mutate(prop = n / sum (n)) %>%
+  filter(specific_product %in% c("Respirators and Face Masks", "Face Masks Only", "Respirators Only")) %>% 
+  mutate(lab_prop = round(case_when(
+    broad_loc == "Manufacturer" ~ prop
+  ),2)) %>% 
+  ggplot(aes(specific_product, prop, fill = broad_loc, label = lab_prop)) +
+  geom_col(position = "stack") + 
+  geom_label(show.legend = FALSE) + 
+  scale_fill_manual(values = my_pal) +
+  coord_flip() +
+  theme_bw() + 
+  labs(title = "Prop of US Suppliers of End Products, \nby Supplier Type", subtitle = "Affirmatively meets FDA Specs, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
 ```
 
 
