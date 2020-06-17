@@ -38,7 +38,8 @@ This document begins to analyze cleaned Alibaba product data. We work from three
 ```{r}
 end_prod <- readRDS(here("Data/Cleaned/ab_end_prods.RDS")) %>% 
   filter(!is.na(useful))
-int_prod <- readRDS(here("Data/Cleaned/ab_int_prod.RDS"))
+int_prod <- readRDS(here("Data/Cleaned/ab_int_prod.RDS")) %>% 
+  mutate(useful = "Affirmatively")
 machines <- readRDS(here("Data/Cleaned/ab_machines.RDS"))
 ```
 
@@ -67,7 +68,8 @@ ab1 <- ab_all %>%
 How many unique companies do we have, and how many products do they produce? 
 
 ```{r}
-comps <- ab_all %>% 
+comps_fda <- ab_all %>% 
+  filter(!is.na(useful)) %>% 
   group_by(broad_product, company, product_cat) %>% 
   count(name = "individual_products") %>% 
   group_by(company) %>% 
@@ -81,13 +83,13 @@ length(unique(comps$company))
 We see that we have 16 companies in our dataset. 
 
 ```{r}
-ab2 <- comps %>% 
+ab2 <- comps_fda %>% 
   ungroup() %>% 
   ggplot(aes(company, total_prods, label = company, fill = product_cat, group = company)) + 
   geom_col(position = "stack", color = "black", alpha = 0.5) +
   coord_flip() + 
   facet_wrap(~broad_product) + 
-  labs(title = "Companies and Their Products, by Broad Product Category", subtitle = "Alibaba, 06/06/2020", y = "Number of Unique Products", fill = "Broad Product") + 
+  labs(title = "Companies and Their Products, by Broad Product Category", subtitle = "Likely Meets FDA Specs, Alibaba, 06/06/2020", y = "Number of Unique Products", fill = "Broad Product") + 
   theme_hc()
 ```
 

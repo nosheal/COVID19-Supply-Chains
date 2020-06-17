@@ -248,23 +248,6 @@ thomas_struc <- thomas_struc %>%
     cloth_mask == "Cloth Mask" ~ "Cloth Masks"))
 ```
 
-```{r}
-my_pal <- c("cadetblue", "darkblue", "green", "darkgreen", "darkgrey")
-```
-
-
-```{r}
-thomas_struc %>% 
-  group_by(specific_product) %>% 
-  count() %>% 
-  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
-  geom_col() + 
-  geom_label(show.legend = FALSE) +
-  theme_bw() + 
-  labs(title = "Number of Suppliers by Specific End Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "Total N = 1226", fill = "Specific Product") + 
-  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
-```
-
 The last thing we will do is add a flag for if the company mentions that they are responding to COVID-19. 
 
 ```{r}
@@ -379,90 +362,6 @@ thomas_struc %>%
   count()
 ```
 
-```{r}
-sup_type <- thomas_struc %>%
-  filter(useful %in% c("Affirmatively")) %>% 
-  filter(!is.na(specific_product)) %>% 
-  group_by(broad_loc, specific_product) %>% 
-  count() %>% 
-  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
-  geom_col() + 
-  facet_wrap(~broad_loc) + 
-  geom_label(show.legend = FALSE) +
-  theme_bw() + 
-  labs(title = "Number of FDA Approved Suppliers by Specific End Product Type", subtitle = "by Supplier Type, Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
-  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
-```
-
-An immediate question that we are interested in is: for face masks and respirators, what percent of US firms are manufacturers compared to distributors? 
-
-```{r}
-thomas_struc %>%
-  filter(useful %in% c("Affirmatively")) %>% 
-  filter(!is.na(specific_product)) %>% 
-  group_by(broad_loc, specific_product) %>% 
-  count() %>% 
-  ungroup() %>% 
-  group_by(specific_product) %>% 
-  mutate(prop = n / sum (n)) %>%
-  filter(specific_product %in% c("Respirators and Face Masks", "Face Masks Only", "Respirators Only")) %>% 
-  mutate(lab_prop = round(case_when(
-    broad_loc == "Primary Manufacturer" ~ prop
-  ),2)) %>% 
-  ggplot(aes(specific_product, prop, fill = broad_loc, label = lab_prop)) +
-  geom_col(position = "stack") + 
-  geom_label(show.legend = FALSE) + 
-  scale_fill_brewer(palette = "Set3", na.value = "grey") + 
-  coord_flip() +
-  theme_bw() + 
-  labs(title = "Prop of US Suppliers of End Products, \nby Supplier Type", subtitle = "Affirmatively meets FDA Specs, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
-```
-
-
-
-### Intermediary Products
-
-We are interested in performing a similar analysis on intermediary products. 
-
-```{r}
-int_prod <- readRDS("Data/int_prod.RDS")
-```
-
-```{r}
-int_prod %>%
-  filter(useful == "Affirmatively") %>% 
-  group_by(specific_product) %>% 
-  count() %>% 
-  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
-  geom_col() + 
-  geom_label(show.legend = FALSE) +
-  theme_bw() + 
-  scale_fill_brewer(palette = "Set2") +
-  labs(title = "Number of Suppliers by Intermediary Product Type", subtitle = "Affirmatively Useful, Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product") + 
-  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())
-```
-
-```{r}
-int_prod %>%
-  filter(useful == "Affirmatively") %>% 
-  filter(!is.na(specific_product)) %>% 
-  group_by(broad_loc, specific_product) %>% 
-  count() %>% 
-  ungroup() %>% 
-  group_by(specific_product) %>% 
-  mutate(prop = n / sum (n)) %>%
-  mutate(lab_prop = round(case_when(
-    broad_loc == "Primary Manufacturer" ~ prop
-  ),2)) %>% 
-  ggplot(aes(specific_product, prop, fill = broad_loc, label = lab_prop)) +
-  geom_col(position = "stack") + 
-  geom_label(show.legend = FALSE) + 
-  scale_fill_brewer(palette = "Set3", na.value = "grey") + 
-  coord_flip() +
-  theme_bw() + 
-  labs(title = "Prop of US Suppliers of Intermediary Products, \nby Supplier Type", subtitle = "Affirmatively Useful, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
-```
-
 ## Analyzing Capacity and Lead Time Data: 
 
 The key question we try and answer here is: what do we have available? 
@@ -515,12 +414,12 @@ There are 218 observations that we have potential information for either capacit
 Our next step will be to determine exactly what information we can extract from this smaller dataset. We do this manually in excel. 
 
 ```{r, eval = FALSE}
-write_csv(cap_lead, "Data/cap_lead.csv")
+write_csv(cap_lead, here("Data/cap_lead.csv"))
 ```
 
 
 ```{r, include = FALSE}
-cap_lead_impute <- read_csv("Data/cap_lead_impute.csv")
+cap_lead_impute <- read_csv(here("Data/cap_lead_impute.csv"))
 ```
 
 ```{r}
@@ -611,166 +510,7 @@ thomas_an <- left_join(thomas_struc, cap_lead)
 
 
 ```{r}
-saveRDS(thomas_an, "Data/fm_resp.RDS")
+saveRDS(thomas_an, here("Data/fm_resp.RDS"))
 ```
 
-### Checking Validity of Product Modeling Possibilities 
-
-```{r}
-thomas_struc %>% 
-  filter(str_detect(desc, fixed("Capabilities include", ignore_case = TRUE)) |
-           str_detect(desc, fixed("Our masks are", ignore_case = TRUE)) |
-           str_detect(desc, fixed("We offer", ignore_case = TRUE)) |
-           str_detect(desc, fixed("sq ft", ignore_case = TRUE)) | 
-           str_detect(desc, fixed("services include", ignore_case = TRUE)) |
-           str_detect(desc, fixed("services offered", ignore_case = TRUE)) 
-         ) %>% 
-  count()
-```
-
-
-# Using Tidytext to Model Differences Between Supplier Types  
-
-```{r}
-thomas_text <- thomas_struc %>% 
-  unnest_tokens(word, desc)
-
-thomas_text %>% head()
-```
-
-We have created a dataset where each row is a word from the description of a face mask product supplier from the Thomasnet database. These results are limited to the Us. We are going to see if we can use text analytics to categorize specific companies by their product mix. 
-
-Based on a review of the Thomasnet output, it seems as though there is a lot of specific product information about what a given supplier provides, even if there are no details about sales or employees. 
-
-```{r}
-example <- function(data, comp) {
-  data %>% 
-    filter(company == comp) %>% 
-    select(desc)
-}
-```
-
-
-```{r}
-thomas_fm %>% 
-  example(comp = "Pacific Imports")
-```
-
-The products that other companies state that they produce are less clearly applicable to the COVID-19 response. 
-
-```{r}
-thomas_fm %>% 
-  example(comp = "Blue Beat Digital") 
-```
-
-However, this does not mean that these products are NOT useful.
-
-## Begining to tidy the text
-
-We start by removing "stop words" such as "the", "of," to" and so forth. We can use a previously defined dictionary here, however we will also want to modify it to make sure to preserve some words we care about. 
-
-```{r}
-stop_words <- stop_words %>% 
-  filter(!word %in% c("beyond", "changes",  "contains", "containing", "contain", "nearly", "only", "novel", "plus", "possible", "particular", "particularly", "provides", "probably")) %>% 
-  filter(lexicon == "SMART")
-```
-
-We also create a list of "product" words that tell us useful information but do not allow us much differentiation between groups. 
-
-
-```{r}
-product_words <- as.data.frame(c("covid", "coronavirus", "N95", "KN95", "mask", "masks", "cloth", "surgical", "medical", "ppe", "disposable", "19", "dust", "industrial", "gloves", "gowns", "respirators", "face", "include", "product", "equipment", "supplies", "including", "safety", "respirator", "protective", "brands", "kn95", "3m", "full", "brands", "covid-19", "valve", "shields", "products", "n95", "reusable", "facepiece", "protection", "dental", "devices", "care", "glasses", "kits", "clothing", "air", "breathing", "filter", "eye", "respiratory", "valves", "nose", "head", "hand", "goggles", "filters", "latex", "ply", "sanitizer", "crisis"))
-
-colnames(product_words) <- "word"
-```
-
-
-
-```{r}
-tidy_thomas <- thomas_text %>% 
-  anti_join(stop_words) %>% 
-  filter(word != "19") %>% 
-  mutate(word = str_replace(word, "covid", "covid-19"))
-```
-
-```{r}
-thomas_noprod <- tidy_thomas %>% 
-  anti_join(product_words)
-```
-
-
-```{r}
-top_words <- thomas_noprod %>%
-  group_by(broad_loc, specific_product) %>% 
-  count(word, sort = TRUE) 
-```
-
-```{r}
-resp <- top_words %>% 
-  filter(specific_product == "Respirators Only") %>%
-  filter(broad_loc %in% c("Distributor", "Primary Manufacturer")) %>% 
-  group_by(broad_loc) %>% 
-  filter(n > 5) %>% 
-  ggplot(aes(word, n, fill = word)) +
-  geom_col() +
-  facet_wrap(~broad_loc) +
-  labs(title = "Top Non-Product Words for Suppliers Producing Respirators Only", subtitle = "Thomasnet, 5/29/2020", y = "") +
-  theme_bw() + 
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
-```
-
-```{r}
-fm <- top_words %>% 
-  filter(specific_product == "Face Masks Only") %>% 
-  filter(broad_loc %in% c("Distributor", "Primary Manufacturer")) %>% 
-  group_by(broad_loc) %>% 
-  filter(n > 6) %>% 
-  ggplot(aes(word, n, fill = word)) +
-  geom_col() +
-  facet_wrap(~broad_loc) +
-  labs(title = "Top Non-Product Words for Suppliers Producing Face Masks Only", subtitle = "Thomasnet, 5/29/2020", y = "") +
-  theme_bw() + 
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
-```
-
-```{r}
-both <- top_words %>% 
-  filter(specific_product == "Respirators and Face Masks") %>% 
-  filter(broad_loc %in% c("Distributor", "Primary Manufacturer")) %>% 
-  group_by(broad_loc) %>% 
-  filter(n > 10) %>% 
-  ggplot(aes(word, n, fill = word)) +
-  geom_col() +
-  facet_wrap(~broad_loc) +
-  labs(title = "Top Non-Product Words for Suppliers Producing Respirators and Face Masks", subtitle = "Thomasnet, 5/29/2020", y = "") +
-  theme_bw() + 
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
-```
-
-We see that there do appear to be some differences between our categories. 
-
-# An Attempt at Topic Modeling
-
-First we turn our tidy object into a document term matrix. 
-
-```{r}
-thomas_count <- tidy_thomas %>% 
-  group_by(company, word) %>% 
-  count()
-
-tidy_thomas <- left_join(tidy_thomas, thomas_count)
-```
-
-
-```{r}
-thomas_corpus <- tidy_thomas %>% 
-  cast_dtm(company, word, n)
-```
-
-```{r}
-thomas_corpus
-```
-
-
-TO CONTINUE LATER!
 
