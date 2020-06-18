@@ -21,6 +21,7 @@ library(RColorBrewer)
 library(ggthemes)
 library(tm)
 library(here)
+library(lubridate)
 ```
 
 
@@ -326,7 +327,7 @@ thomas_struc %>%
 ```
 
 
-## Analyzing Supplier Types 
+## Supplier Types 
 
 We now turn to an anlysis of supplier types. Our goal is to differentiate between the different supplier types. 
 
@@ -363,7 +364,7 @@ thomas_struc %>%
   count()
 ```
 
-## Analyzing Capacity and Lead Time Data: 
+## Capacity and Lead Time Data: 
 
 The key question we try and answer here is: what do we have available? 
 

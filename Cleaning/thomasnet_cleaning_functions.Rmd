@@ -1,0 +1,493 @@
+---
+title: "thomasnet_cleaning_functions"
+author: "Nikhil Kalathil"
+date: "6/18/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, include == FALSE }
+library(tidyverse)
+library(tidytext)
+library(RColorBrewer)
+library(ggthemes)
+library(tm)
+library(here)
+library(lubridate)
+```
+# End products
+
+## Defining Functions 
+
+We now define a series of functions to clean weekly Thomasnet pulls. 
+
+First, we define our directory: 
+
+```{r}
+dir <- "C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls"
+```
+
+Next, we define our functions. 
+
+### Read Data and Bind Respirators and Face Masks Together
+
+
+
+```{r}
+read_bind <- function(date) {
+  
+  
+  file_suffix <- paste(str_replace(date, "\\_", ""), "2020", sep = "")
+  
+  fm <- readRDS(paste("C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls/", date, "/thomas_fm_", file_suffix, ".RDS", sep =""))
+  
+  resp <- readRDS(paste("C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls/", date, "/thomas_resp_", file_suffix, ".RDS", sep =""))
+  
+    df <- bind_rows(resp, fm)
+    
+    return(df)
+}
+```
+
+```{r}
+test <- read_bind(date = '06_05')
+
+```
+
+### Remove Duplicates and Clean Words
+
+```{r}
+remove_dups <- function(data) {
+  
+  double <- data %>% 
+  group_by(company, desc) %>% 
+  count() %>% 
+  filter(n == 2) %>% 
+  mutate(search_prod = "Face Masks and N95 Respirators", broad_product = "End Product") %>% 
+  select(-n)
+  
+  thomas_clean <- anti_join(data, double, by = c("company", "desc")) %>% 
+  bind_rows(double)
+  
+  thomas_clean <- thomas_clean %>% 
+  mutate(desc = str_replace(desc, fixed("covid 19", ignore_case = TRUE), "covid-19"), 
+         desc = str_replace(desc, fixed("non woven", ignore_case = TRUE), "non-woven"), 
+         desc = str_replace(desc, fixed("melt blown", ignore_case = TRUE), "melt-blown"),
+         desc = str_replace(desc, fixed("3 ply", ignore_case = TRUE), "3-ply"),
+         desc = str_replace(desc, fixed("3ply", ignore_case = TRUE), "3-ply"),
+         desc = str_replace(desc, fixed("clean room", ignore_case = TRUE), "cleanroom") 
+         ) %>% 
+  filter(str_length(desc) > 2)
+  
+  return(thomas_clean)
+    
+}
+```
+
+```{r}
+test_clean <- remove_dups(test)
+```
+
+### Define products and structure
+
+```{r}
+prod_struc1 <- function(data) {
+  data %>% 
+  mutate(resp = case_when(
+    str_detect(desc, fixed("respirator", ignore_case = TRUE)) | 
+      str_detect(desc, fixed("N95", ignore_case = TRUE)) | 
+      str_detect(desc, fixed("cleanroom", ignore_case = TRUE)) ~ "Respirator"),
+    face_mask = case_when(
+      str_detect(desc, fixed("medical", ignore_case = TRUE)) |
+        str_detect(desc, fixed("surgical", ignore_case = TRUE)) |
+        str_detect(desc, fixed("dental", ignore_case = TRUE)) |
+        str_detect(desc, fixed("veterinary", ignore_case = TRUE)) |
+        str_detect(desc, fixed("dust mask", ignore_case = TRUE)) |
+        str_detect(desc, fixed("ISO", ignore_case = FALSE)) |
+        str_detect(desc, fixed("ASTM", ignore_case = FALSE))|
+        str_detect(desc, fixed("ANSI", ignore_case = FALSE)) |
+        str_detect(desc, fixed("AAMI", ignore_case = FALSE)) |
+        str_detect(desc, fixed("level ", ignore_case = TRUE)) |
+        str_detect(desc, "PPE") |
+        str_detect(desc, fixed("non-woven", ignore_case = FALSE)) |
+        str_detect(desc, fixed("3M", ignore_case = FALSE)) |
+        str_detect(desc, fixed("3-ply", ignore_case = FALSE)) |
+        str_detect(desc, fixed("non-woven", ignore_case = FALSE)) ~ "Face Mask")
+  ) 
+    
+}
+```
+
+```{r}
+test_struc <- prod_struc1(test_clean)
+```
+
+```{r}
+prod_struc2 <- function(data) {
+  prod_struc1(data) %>% 
+  mutate(face_mask = case_when(
+    (str_detect(desc, fixed("face mask", ignore_case = TRUE)) | str_detect(desc, fixed("disposable", ignore_case = TRUE)))
+                  & !is.na(resp) & is.na(face_mask) ~ "Face Mask", 
+    TRUE ~ face_mask 
+  ))
+    
+}
+```
+
+```{r}
+test_struc <- prod_struc2(test_clean)
+```
+
+```{r}
+prod_struc3 <- function(data) {
+  prod_struc2(data) %>% 
+  mutate(cloth_mask = case_when(
+    (str_detect(desc, fixed("masks", ignore_case = TRUE))|
+       str_detect(desc, fixed("face mask", ignore_case = TRUE)) | str_detect(desc, fixed("cloth mask", ignore_case = TRUE)) |
+       str_detect(desc, fixed("sewn", ignore_case = TRUE)))
+       & is.na(resp) & is.na(face_mask) ~ "Cloth Mask"))
+}
+```
+
+
+```{r}
+test_struc <- prod_struc3(test_clean)
+```
+
+```{r}
+prod_struc <- function(data) { 
+  prod_struc3(data) %>% 
+    mutate(specific_product = case_when( 
+    resp == "Respirator" & is.na(face_mask) ~ "Respirators Only", 
+    face_mask == "Face Mask" & is.na(resp) ~ "Face Masks Only", 
+    resp == "Respirator" & face_mask == "Face Mask" ~ "Respirators and Face Masks", 
+    cloth_mask == "Cloth Mask" ~ "Cloth Masks"))
+  }
+```
+
+```{r}
+test_struc <- prod_struc(test_clean)
+```
+
+
+### Define Covid Participation 
+
+```{r}
+covid_part <- function(data){
+  data %>% 
+    mutate(covid_desc = str_detect(desc, fixed("covid", ignore_case = TRUE)) | str_detect(desc, fixed("coronavirus", ignore_case = TRUE)))
+}
+```
+
+### Define FDA specs
+
+```{r}
+fda_specs <- function(data) {
+  data %>% 
+    mutate(useful = case_when(
+        str_detect(desc, fixed("N95", ignore_case = TRUE)) | 
+      str_detect(desc, fixed("cleanroom", ignore_case = TRUE))|
+        str_detect(desc, fixed("ISO", ignore_case = FALSE)) |
+        str_detect(desc, fixed("ASTM", ignore_case = FALSE))|
+        str_detect(desc, fixed("ANSI", ignore_case = FALSE)) |
+        str_detect(desc, fixed("AAMI", ignore_case = FALSE)) |
+        str_detect(desc, "FDA") |
+        str_detect(desc, "NIOSH") |
+        str_detect(desc, "801") |
+        str_detect(desc, "KN95") |
+        str_detect(desc, fixed("3M", ignore_case = FALSE)) |
+        str_detect(desc, fixed("3-ply", ignore_case = FALSE)) ~ "Affirmatively",
+      str_detect(desc, fixed("medical", ignore_case = TRUE)) |
+        str_detect(desc, fixed("surgical", ignore_case = TRUE)) |
+        str_detect(desc, fixed("dental", ignore_case = TRUE)) |
+        str_detect(desc, fixed("veterinary", ignore_case = TRUE)) |
+        str_detect(desc, fixed("dust mask", ignore_case = TRUE)) |
+        str_detect(desc, fixed("level ", ignore_case = TRUE)) |
+        str_detect(desc, "PPE") |
+        str_detect(desc, fixed("non-woven", ignore_case = FALSE)) ~ "Possibly")
+  )
+}
+```
+
+### Define Suppliers
+
+```{r}
+suppliers <- function(data){ 
+  data %>% 
+    mutate(broad_loc = case_when(
+    str_detect(loc_desc, "Manufacturer\\*") ~ "Primary Manufacturer", 
+    str_detect(loc_desc, "Manufacturer") & str_detect(loc_desc, "Manufacturer\\*", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep", negate = TRUE) ~ "Secondary Manufacturer",
+    str_detect(loc_desc, "Distributor") | str_detect(loc_desc, "Manufacturers' Rep*") ~ "Distributor", 
+    str_detect(loc_desc, "Manufacturer", negate = TRUE) & str_detect(loc_desc, "Manufacturer\\*", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep", negate = TRUE) & 
+      str_detect(loc_desc, "Distributor", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep*", negate = TRUE) ~ "Other"))
+  }
+```
+
+
+### Stitch all functions together
+
+```{r}
+clean_endprods <- function(date){
+  
+  raw <- read_bind(date)
+  
+  file_suffix <- paste(str_replace(date, "\\_", ""), "2020", sep = "")
+  
+  raw %>% 
+    remove_dups() %>% 
+    prod_struc() %>% 
+    covid_part() %>% 
+    fda_specs() %>% 
+    suppliers() %>%
+      mutate(date = mdy(file_suffix))
+    
+    
+}
+```
+
+```{r}
+thomas_test <- clean_endprods("06_05")
+```
+
+
+## Combining datasets
+
+```{r}
+fm_resp <- readRDS(here("Data/Cleaned/fm_resp.RDS")) %>% 
+  mutate(date = mdy(05302020))
+```
+
+
+```{r}
+thomas_files <- list()
+
+file_list <- list.files(dir)
+file_list <- file_list[-1]
+
+i <- 1
+
+for (file in 1:length(file_list)) {
+  
+  filename <- file_list[file]
+  
+  thomas_files[[file]] <- clean_endprods(filename)
+  
+  i <- i+1
+}
+```
+
+```{r}
+thomas_endprods <- bind_rows(fm_resp, thomas_files[[1]]) %>% 
+  bind_rows(thomas_files[[2]])
+```
+
+```{r}
+dir1 <- "C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/thomasnet_totals"
+saveRDS(thomas_endprods, paste(dir1, "/thomas_endprods.RDS", sep = ""))
+```
+
+# Intermediary Products
+
+
+```{r}
+int_prod <- readRDS(here("Data/Cleaned/int_prod.RDS")) %>% 
+  mutate(date = mdy(05302020))
+```
+
+## Defining Functions
+
+We define our functions for our intermediary data
+
+### Read Data
+
+```{r}
+read_nw <- function(date) {
+  
+  file_suffix <- paste(str_replace(date, "\\_", ""), "2020", sep = "")
+
+  
+  df <- readRDS(paste("C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls/", date, "/nonwoven_", file_suffix, ".RDS", sep =""))
+  
+    
+    return(df)
+}
+```
+
+```{r}
+read_lat <- function(date) {
+  
+  file_suffix <- paste(str_replace(date, "\\_", ""), "2020", sep = "")
+
+  df <- readRDS(paste("C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls/", date, "/nolatex_", file_suffix, ".RDS", sep =""))
+  
+    
+    return(df)
+}
+
+```
+
+
+### Affirmatively Producing Covid-19 Relevant Fabric
+```{r}
+cat_1 <- function(data) {
+  data %>% 
+    mutate(desc = str_replace(desc, fixed("spun bonded", ignore_case = TRUE), "spunbonded"), 
+           desc = str_replace(desc, fixed("spun-bonded", ignore_case = TRUE), "spunbonded"), 
+           desc = str_replace(desc, fixed("melt blown", ignore_case = TRUE), "meltblown"),
+           desc = str_replace(desc, fixed("melt-blown", ignore_case = TRUE), "meltblown"), 
+           desc = str_replace(desc, fixed("needlepunch", ignore_case = TRUE), "needle punch")) %>% 
+    mutate(cat_1 = case_when(
+      str_detect(desc, fixed("gsm", ignore_case = TRUE)) |
+        str_detect(desc, fixed("spunbonded", ignore_case = TRUE)) | 
+        str_detect(desc, fixed("needle punch", ignore_case = TRUE)) | 
+        str_detect(desc, fixed("meltblown", ignore_case = TRUE)) |
+      str_detect(desc, "ISO") |
+      str_detect(desc, fixed("spunlace", ignore_case = TRUE)) |
+      str_detect(desc, fixed("hydroentangled", ignore_case = TRUE)) |
+      str_detect(desc, fixed("ghz", ignore_case = TRUE)) |
+      str_detect(desc, fixed("electrospun", ignore_case = TRUE))  ~ "cat_1"))
+}
+  
+```
+
+### Produces a product that is potentially useable for COVID-19 masks and respirators. 
+
+```{r}
+cat_2 <- function(data) {
+  data %>% 
+    cat_1() %>% 
+    mutate(cat_2 = case_when(
+      (str_detect(desc, fixed("hospital", ignore_case = TRUE)) |
+        str_detect(desc, fixed("medical", ignore_case = TRUE)) | 
+        str_detect(desc, fixed("surgical", ignore_case = TRUE)) |
+        str_detect(desc, fixed("dental", ignore_case = TRUE)) |
+        str_detect(desc, fixed("polypropylene", ignore_case = TRUE)) |
+        str_detect(desc, "dust"))  ~ "cat_2")) %>% 
+    mutate(cat_2 = case_when(
+      cat_1 == "cat_1" ~ NA_character_,
+      TRUE ~ cat_2
+    ))
+}
+```
+
+### Category 3 and Coatings
+
+Category 3 mention none of the other categories, but do mention coatings. We remove mentions of vinyl coatings as these tend to relate to furniture. 
+
+```{r}
+cat_3 <- function(data) {
+  data %>% 
+    cat_1() %>% 
+    cat_2() %>% 
+    mutate(cat_3 = case_when(
+      str_detect(desc, "metal")  ~ "cat_3")) %>% 
+    mutate(cat_3 = case_when(
+      cat_1 == "cat_1" | cat_2 == "cat_2" ~ NA_character_,
+      TRUE ~ cat_3
+    )) 
+}
+```
+
+### Filter Out Unrelated Entries and Define Our Toggle 
+
+We now filter out entries that fit none of the above categories.
+
+```{r}
+fda_specs_nw <- function(data) {
+  data %>%
+    cat_3() %>% 
+    mutate(cat_3 = case_when(
+    company %in% c("Technical Fibre Products, Inc.", "	Goodfellow Corp.") ~ "cat_3", 
+    TRUE ~ cat_3
+  )) %>% 
+    filter(!is.na(cat_1) | !is.na(cat_2) | !is.na(cat_3))
+}
+```
+
+```{r}
+fda_specs_lat <- function(data) {
+  data %>% 
+  mutate(useful = "Affirmatively")
+}
+```
+
+### Suppliers and Stiching Functions
+
+```{r}
+clean_int <- function(date) {
+  
+  file_suffix <- paste(str_replace(date, "\\_", ""), "2020", sep = "")
+  
+  nw <- read_nw(date) %>% 
+    fda_specs_nw()
+  lat <- read_lat(date) %>% 
+    fda_specs_lat()
+  
+  int_comb <- bind_rows(nw, lat)
+  
+  int_comb %>% 
+  mutate(broad_loc = case_when(
+    str_detect(loc_desc, "Manufacturer\\*") ~ "Primary Manufacturer", 
+    str_detect(loc_desc, "Manufacturer") & str_detect(loc_desc, "Manufacturer\\*", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep", negate = TRUE) ~ "Secondary Manufacturer",
+    str_detect(loc_desc, "Distributor") | str_detect(loc_desc, "Manufacturers' Rep*") ~ "Distributor", 
+    str_detect(loc_desc, "Manufacturer", negate = TRUE) & str_detect(loc_desc, "Manufacturer\\*", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep", negate = TRUE) & 
+      str_detect(loc_desc, "Distributor", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep*", negate = TRUE) ~ "Other")) %>% 
+    mutate(date = mdy(file_suffix))
+    
+  
+}
+```
+
+## Combining All Data
+
+
+```{r}
+thomas_files <- list()
+
+file_list <- list.files(dir)
+file_list <- file_list[-1]
+
+i <- 1
+
+for (file in 1:length(file_list)) {
+  
+  filename <- file_list[file]
+  
+  thomas_files[[file]] <- clean_int(filename)
+  
+  i <- i+1
+}
+```
+
+```{r}
+thomas_intprods <- bind_rows(int_prod, thomas_files[[1]]) %>% 
+  bind_rows(thomas_files[[2]])
+```
+
+```{r}
+saveRDS(thomas_intprods, paste(dir1, "/thomas_intprods.RDS", sep = ""))
+```
+
+```{r}
+thomas_prods <- bind_rows(thomas_endprods, thomas_intprods)
+```
+
+```{r}
+saveRDS(thomas_prods, paste(dir1, "/thomas_allprods.RDS", sep = ""))
+```
+
+
+
