@@ -363,7 +363,7 @@ fig3 <- thomas_time %>%
 
 ```{r}
 thomas_time_fda <- thomas_all %>%
-  filter(useful %in% c("Affirmatively", "Possibly")) %>% 
+  filter(useful %in% c("Affirmatively")) %>% 
   filter(!is.na(specific_product)) %>%
   mutate(broad_loc = case_when(
     str_detect(broad_loc, "Manuf") ~ "Manufacturer", 
