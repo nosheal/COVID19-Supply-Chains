@@ -62,18 +62,55 @@ fig1 <- thomas_struc %>%
     specific_product == "No Latex Elastic" ~ 6,
     specific_product == "Cloth Masks" ~ 4, 
   )) %>% 
+  ungroup() %>% 
+  mutate(specific_product = reorder(specific_product, pos) ) %>% 
   ggplot(aes(reorder(specific_product, -pos), n, fill = specific_product, label = n)) +
   geom_col(position = "dodge", show.legend = FALSE) + 
-  geom_label(show.legend = FALSE) +
   scale_fill_brewer(palette = "Set2") +
   theme_bw() + 
   coord_flip() + 
   labs(title = "Number of Suppliers by Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product")
 
-fig1
+fig1lab <- fig1 + geom_label(show.legend = FALSE) 
+
+fig1lab
 ```
 
 ## Segmenting by FDA Requirements
+
+```{r}
+fda_graph <- thomas_struc %>% 
+  filter(specific_product != "NA") %>% 
+  mutate(useful = case_when(
+    is.na(useful) ~ "Unknown", 
+    TRUE ~ useful
+  )) %>% 
+  group_by(broad_product, specific_product, useful) %>% 
+  count() %>% 
+  ungroup() %>% 
+  mutate(pos = case_when(
+    specific_product == "Respirators and Face Masks" ~ 1, 
+    specific_product == "Face Masks Only" ~ 2, 
+    specific_product == "Respirators Only" ~ 3, 
+    specific_product == "Non-Woven Fabric" ~ 5, 
+    specific_product == "No Latex Elastic" ~ 6,
+    specific_product == "Cloth Masks" ~ 4, 
+  )) %>% 
+  mutate(specific_product = fct_reorder(specific_product, -pos),
+         n_fda = case_when(
+           useful == "Affirmatively" ~ n
+  ))
+```
+
+
+```{r}
+fig2 <- fig1 +
+  geom_col(data = fda_graph, aes(specific_product, n_fda, fill = specific_product), color = "Black", position = "stack") +
+  geom_label(data = fda_graph, aes(label = n_fda), show.legend = FALSE) +
+  labs(fill = "Affirmatively Meets FDA Specs")
+
+fig2
+```
 
 ```{r}
 thomas_struc %>% 
@@ -109,7 +146,7 @@ thomas_struc %>%
 We then turn to differentiating by supplier types to look at the proportion of companies that are distributors compared to manufacturers. 
 
 ```{r}
-my_pal <- c(brewer.pal(3, "Set3")[2], brewer.pal(3, "Set3")[1], "grey")
+my_pal <- c(brewer.pal(4, "Set3")[4], brewer.pal(4, "Set3")[1], "grey")
 ```
 
 ```{r}
@@ -143,6 +180,29 @@ sup1 <- thomas_struc %>%
   labs(title = "Number of Suppliers by Product and Supplier Type", subtitle = "Affirmatively Meeting FDA Specs, Thomasnet 5/29/20", y = "", x = "", fill = "Supplier Type") 
 ```
 
+```{r}
+sup_base <- thomas_struc %>% 
+  filter(useful %in% c("Affirmatively"), specific_product != "Cloth Masks") %>% 
+  mutate(broad_loc = case_when(
+    str_detect(broad_loc, "Manuf") ~ "Manufacturer", 
+    str_detect(broad_loc, "Dist") ~ "Distributor",
+    TRUE ~ "Other/Unknown"
+  )) %>% 
+  group_by(broad_product, specific_product, broad_loc) %>% 
+  filter(specific_product != "NA") %>% 
+  count() %>% 
+  ungroup() %>% 
+  mutate(pos = case_when(
+    specific_product == "Respirators and Face Masks" ~ 1, 
+    specific_product == "Face Masks Only" ~ 2, 
+    specific_product == "Respirators Only" ~ 3, 
+    specific_product == "Non-Woven Fabric" ~ 4, 
+    specific_product == "No Latex Elastic" ~ 5
+  )) %>% 
+  rename(ref = n) %>% 
+  filter(broad_loc == "Manufacturer")
+```
+
 
 ```{r}
 sup2 <- thomas_struc %>% 
@@ -163,6 +223,10 @@ sup2 <- thomas_struc %>%
     specific_product == "Non-Woven Fabric" ~ 4, 
     specific_product == "No Latex Elastic" ~ 5
   )) %>% 
+  left_join(sup_base) %>% 
+  mutate(pct_change = (n-ref)/ref,
+         change_lab = case_when(
+           broad_loc == "Manufacturer" & specific_product != "Respirators Only" ~ paste("+ ",100*round(pct_change,2)," %", sep = ""))) %>% 
   ggplot(aes(reorder(specific_product, -pos), n, fill = broad_loc, group = broad_loc)) +
   geom_col(position = "dodge") + 
   geom_label(position=position_dodge(width=1), aes(label = n), show.legend = FALSE) +
@@ -170,9 +234,10 @@ sup2 <- thomas_struc %>%
   geom_vline(xintercept = 2.5) +
   theme_bw() + 
   coord_flip() + 
+  geom_label(position=position_dodge(width=1), aes(label = change_lab), fill = brewer.pal(3, "Set3")[1], hjust = 3, vjust = 1) +
   ggplot2:: annotate("label", x = 2.8, y = 85, label = "End Products") + 
     ggplot2:: annotate("label", x = 1, y = 85, label = "Intermediary Products") + 
-  labs(title = "Number of Suppliers by Product and Supplier Type", subtitle = "Affirmatively or Possibly Meeting FDA Specs, Thomasnet 5/29/20", y = "", x = "", fill = "Supplier Type") 
+  labs(title = "Number of Suppliers by Product and Supplier Type", subtitle = "Affirmatively or Possibly Meeting FDA Specs, Thomasnet 5/29/20. \n% Change Relative to Affirmatively Alone", y = "", x = "", fill = "Supplier Type") 
 ```
 
 
@@ -261,8 +326,70 @@ thomas_struc %>%
   labs(title = "Prop of US Suppliers of End Products, \nby Supplier Type", subtitle = "Affirmatively meets FDA Specs, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
 ```
 
+## Number of distributors over time
 
-### Checking Validity of Product Modeling Possibilities 
+```{r}
+thomas_all <- readRDS(here("Data/Cleaned/thomas_allprods.RDS"))
+```
+
+```{r}
+thomas_time <- thomas_all %>%
+  filter(!is.na(specific_product)) %>%
+  mutate(broad_loc = case_when(
+    str_detect(broad_loc, "Manuf") ~ "Manufacturer", 
+    str_detect(broad_loc, "Dist") ~ "Distributor",
+    TRUE ~ "Other/Unknown"
+  )) %>% 
+  group_by(broad_loc, specific_product, date) %>% 
+  count() %>% 
+  ungroup() %>% 
+  group_by(specific_product) %>% 
+  mutate(prop = n / sum (n))
+```
+
+```{r}
+fig3 <- thomas_time %>% 
+  filter(specific_product %in% c("Face Masks Only", "Respirators and Face Masks", "Respirators Only")) %>% 
+  ggplot(aes(date, n, group = broad_loc, color = broad_loc, fill = broad_loc)) +
+  geom_line(show.legend = FALSE) + 
+  geom_point(shape = 21, alpha = 0.7, size = 3, color = "Black") + 
+  scale_fill_manual(values = my_pal) + 
+  scale_color_manual(values = my_pal) + 
+  facet_wrap(~specific_product) + 
+  labs(title = "Thomasnet Suppliers Over Time", subtitle = "By Supplier Type, All Product Specs", x = "", y = "Suppliers", fill = "") + 
+  theme_bw()
+```
+
+
+```{r}
+thomas_time_fda <- thomas_all %>%
+  filter(useful %in% c("Affirmatively", "Possibly")) %>% 
+  filter(!is.na(specific_product)) %>%
+  mutate(broad_loc = case_when(
+    str_detect(broad_loc, "Manuf") ~ "Manufacturer", 
+    str_detect(broad_loc, "Dist") ~ "Distributor",
+    TRUE ~ "Other/Unknown"
+  )) %>% 
+  group_by(broad_loc, specific_product, date) %>% 
+  count() %>% 
+  ungroup() %>% 
+  group_by(specific_product) %>% 
+  mutate(prop = n / sum (n))
+
+fig4 <- thomas_time_fda %>%
+  filter(specific_product %in% c("Face Masks Only", "Respirators and Face Masks", "Respirators Only")) %>% 
+  ggplot(aes(date, n, group = broad_loc, color = broad_loc, fill = broad_loc)) +
+  geom_line(show.legend = FALSE) + 
+  geom_point(shape = 21, alpha = 0.7, size = 3, color = "Black") + 
+  scale_fill_manual(values = my_pal) + 
+  scale_color_manual(values = my_pal) + 
+  facet_wrap(~specific_product) + 
+  labs(title = "Thomasnet Suppliers Over Time", subtitle = "By Supplier Type, Products that Affirmatively or Possibly Meet FDA Specs", x = "", y = "Suppliers", fill = "") + 
+  theme_bw()
+```
+
+
+# Checking Validity of Product Modeling Possibilities 
 
 ```{r}
 thomas_struc %>% 
