@@ -16,6 +16,11 @@ knitr::opts_chunk$set(echo = TRUE)
 
 This document will contain a program to webscrap and format Thomasnet search data. The results of this program are not complete and require additional cleaning/manual data entry, but this program should solve the problem of needing to download large Thomasnet searches. 
 
+```{r}
+dir <- "C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls"
+```
+
+
 ```{r, include = FALSE}
 library(tidyverse)
 library(rvest)
@@ -279,7 +284,7 @@ fd <- thomas_data %>%
 We then define a unique employee and sales and date founded columns 
 
 ```{r}
-final_data <- fd %>% 
+thomas_fm <- fd %>% 
   mutate(sales = case_when(
     str_detect(var1, "\\$") ~ var1, 
     str_detect(var2, "\\$") ~ var2, 
@@ -298,7 +303,11 @@ final_data <- fd %>%
 ```
 
 ```{r}
-saveRDS(final_data, here("Data/thomas_fm_06162020.RDS"))
+save_loc <- paste(dir, "/06_29/thomas_fm_06292020.RDS", sep = "")
+```
+
+```{r}
+saveRDS(thomas_fm, save_loc)
 ```
 
 # Respirators 
@@ -367,7 +376,7 @@ fd <- thomas_resp %>%
 We then define a unique employee and sales and date founded columns 
 
 ```{r}
-final_data <- fd %>% 
+thomas_resp <- fd %>% 
   mutate(sales = case_when(
     str_detect(var1, "\\$") ~ var1, 
     str_detect(var2, "\\$") ~ var2, 
@@ -386,7 +395,16 @@ final_data <- fd %>%
 ```
 
 ```{r}
-saveRDS(final_data, here("Data/thomas_resp_0616202.RDS"))
+save_loc <- paste(dir, "/06_29/thomas_resp_06292020.RDS", sep = "")
+```
+
+
+```{r}
+saveRDS(thomas_resp, save_loc)
+```
+
+```{r}
+saveRDS(final_data, here("Data/thomas_resp_06222020.RDS"))
 ```
 
 # Intermediary Products 
@@ -536,7 +554,16 @@ nonwoven_final <- nonwoven_fd %>%
 ```
 
 ```{r}
-saveRDS(nonwoven_final, here("Data/nonwoven_06162020.RDS"))
+save_loc <- paste(dir, "/06_29/nonwoven_06292020.RDS", sep = "")
+```
+
+```{r}
+saveRDS(nonwoven_final, save_loc)
+```
+
+
+```{r}
+saveRDS(nonwoven_final, here("Data/nonwoven_06222020.RDS"))
 ```
 
 ## No Latex Elastic 
@@ -611,7 +638,16 @@ nolatex_final <- nolatex_fd%>%
 ```
 
 ```{r}
-saveRDS(nolatex_final, here("Data/nolatex_06162020.RDS"))
+save_loc <- paste(dir, "/06_29/nolatex_06292020.RDS", sep = "")
+```
+
+```{r}
+saveRDS(nolatex_final, save_loc)
+```
+
+
+```{r}
+saveRDS(nolatex_final, here("Data/nolatex_06222020.RDS"))
 ```
 
 # Conclusion 

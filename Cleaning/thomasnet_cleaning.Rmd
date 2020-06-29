@@ -139,6 +139,68 @@ thomas_clean$ID <- seq.int(nrow(thomas_clean))
 ```
 
 
+### Recategorizing
+
+Before we begin, we recognize that the current structure of our data categorizes companies that have two different descriptions based on the search term used to find them as separate companies. These differences in descriptions will be of use to us later. However, we also want to ensure that when we are summarizing the number of companies in our dataset, we are identifying companies uniquely. 
+
+Thus, we define a "unique" company, as a company with a uniqe name, location, and broad supplier type category. 
+
+```{r}
+recat <- thomas_clean %>% 
+  group_by(company, location, broad_loc) %>% 
+  mutate(count = n()) 
+```
+
+
+```{r}
+recat %>% 
+  group_by(count) %>% 
+  count()
+```
+
+We see that we have 151 entries that are duplicates. How should we deal with these? 
+
+We know that some of these duplicates are due to the fact that we have some companies with multiple locations in our dataset that we do not have geographical information for. For these companies, we cannot verify that the two entries are different locations. Thus, we filter out these results, leaving us with only 36 results to clean. 
+
+```{r}
+recat %>% 
+  filter(count >= 2, str_detect(location, "Multiple", negate = FALSE)) %>% 
+  select(company, location, broad_loc, desc, specific_product) %>% 
+  view()
+```
+
+We see that in many cases the descriptions are substantially different. We thus change the description to combine both descriptions, drop the repeat observations, and then recategorize our entries based on the new description. 
+
+```{r}
+recat1 <- recat %>% 
+  filter(count >= 2, str_detect(location, "Multiple", negate = FALSE)) %>%
+  group_by(company) %>% 
+  arrange(company) %>% 
+  mutate(desc2 = lead(desc), 
+         tal = seq(n()), 
+         desc = paste(desc, desc2, sep = " DESCRIPTION 2: ")) %>% 
+  filter(tal == 1) %>% 
+  select(-c(tal, count, desc2))
+```
+
+```{r}
+thomas_an <- anti_join(thomas_clean, recat1, by = c("company", "location", "broad_loc"))
+```
+
+```{r}
+thomas_an %>% 
+  filter(str_detect(location, "Multiple", negate = FALSE)) %>% 
+  group_by(company, location, broad_loc) %>% 
+  mutate(count = n()) %>% 
+  group_by(count) %>% 
+  count()
+```
+
+```{r}
+thomas_data <- bind_rows(thomas_an, recat1)
+```
+
+
 ### Structuring the Data
 
 We now begin our process of structuring the data. Our ulimtate goal is to segment the combined respirator and face mask data into the following groups: 
@@ -154,7 +216,7 @@ Cloth masks are defined as companies that do not produce masks that meet any add
 
 
 ```{r}
-thomas_struc <- thomas_clean %>% 
+thomas_struc <- thomas_data %>% 
   mutate(resp = case_when(
     str_detect(desc, fixed("respirator", ignore_case = TRUE)) | 
       str_detect(desc, fixed("N95", ignore_case = TRUE)) | 

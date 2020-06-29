@@ -15,5 +15,5 @@ agg %>%
   geom_line(alpha = 0.5, show.legend = FALSE) + 
   geom_label_repel(color = "Black", show.legend = FALSE, alpha = 0.7, hjust = -0.2, vjust = 1) + 
   geom_point(shape = 21, alpha = 0.7, size = 3, color = "Black", show.legend = FALSE) + 
-  labs(title = "Thomasnet Search Results Over Time", x = "", y = "Search Results", fill = "") + 
+  labs(title = "Thomasnet Supplier Search Results Over Time", subtitle = "For Key Mask/Respirator Supply Chain Search Terms", y = "Unique Suppliers", fill = "") + 
   theme_bw()

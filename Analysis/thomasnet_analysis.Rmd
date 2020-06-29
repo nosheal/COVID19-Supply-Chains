@@ -329,6 +329,10 @@ thomas_struc %>%
 ## Number of distributors over time
 
 ```{r}
+my_pal <- c(brewer.pal(4, "Set3")[4], brewer.pal(4, "Set3")[1], "grey")
+```
+
+```{r}
 thomas_all <- readRDS(here("Data/Cleaned/thomas_allprods.RDS"))
 ```
 
@@ -349,7 +353,6 @@ thomas_time <- thomas_all %>%
 
 ```{r}
 fig3 <- thomas_time %>% 
-  filter(specific_product %in% c("Face Masks Only", "Respirators and Face Masks", "Respirators Only")) %>% 
   ggplot(aes(date, n, group = broad_loc, color = broad_loc, fill = broad_loc)) +
   geom_line(show.legend = FALSE) + 
   geom_point(shape = 21, alpha = 0.7, size = 3, color = "Black") + 

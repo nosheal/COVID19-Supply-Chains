@@ -57,7 +57,7 @@ read_bind <- function(date) {
 ```
 
 ```{r}
-test <- read_bind(date = '06_05')
+test <- read_bind(date = '05_30')
 
 ```
 
@@ -73,10 +73,10 @@ remove_dups <- function(data) {
   mutate(search_prod = "Face Masks and N95 Respirators", broad_product = "End Product") %>% 
   select(-n)
   
-  thomas_clean <- anti_join(data, double, by = c("company", "desc")) %>% 
+  thomas_base <- anti_join(data, double, by = c("company", "desc")) %>% 
   bind_rows(double)
   
-  thomas_clean <- thomas_clean %>% 
+  thomas_clean1 <- thomas_base %>% 
   mutate(desc = str_replace(desc, fixed("covid 19", ignore_case = TRUE), "covid-19"), 
          desc = str_replace(desc, fixed("non woven", ignore_case = TRUE), "non-woven"), 
          desc = str_replace(desc, fixed("melt blown", ignore_case = TRUE), "melt-blown"),
@@ -85,6 +85,23 @@ remove_dups <- function(data) {
          desc = str_replace(desc, fixed("clean room", ignore_case = TRUE), "cleanroom") 
          ) %>% 
   filter(str_length(desc) > 2)
+  
+  recat <- thomas_clean1 %>% 
+    group_by(company, location, loc_desc) %>% 
+    mutate(count = n())  %>% 
+    filter(count >= 2, str_detect(location, "Multiple", negate = FALSE)) %>%
+    ungroup() %>% 
+    group_by(company) %>% 
+    arrange(company) %>% 
+    mutate(desc2 = lead(desc), 
+         tal = seq(n()), 
+         desc = paste(desc, desc2, sep = " DESCRIPTION 2: ")) %>% 
+    filter(tal == 1) %>% 
+    select(-c(tal, count, desc2))
+  
+  thomas_an <- anti_join(thomas_clean1, recat, by = c("company", "location", "loc_desc"))
+  
+  thomas_clean <- bind_rows(thomas_an, recat)
   
   return(thomas_clean)
     
@@ -280,6 +297,8 @@ for (file in 1:length(file_list)) {
   
   filename <- file_list[file]
   
+  print(filename)
+  
   thomas_files[[file]] <- clean_endprods(filename)
   
   i <- i+1
@@ -288,7 +307,9 @@ for (file in 1:length(file_list)) {
 
 ```{r}
 thomas_endprods <- bind_rows(fm_resp, thomas_files[[1]]) %>% 
-  bind_rows(thomas_files[[2]])
+  bind_rows(thomas_files[[2]]) %>% 
+  bind_rows(thomas_files[[3]]) %>% 
+  bind_rows(thomas_files[[4]]) 
 ```
 
 ```{r}
@@ -466,6 +487,8 @@ for (file in 1:length(file_list)) {
   
   filename <- file_list[file]
   
+  print(filename)
+  
   thomas_files[[file]] <- clean_int(filename)
   
   i <- i+1
@@ -474,7 +497,9 @@ for (file in 1:length(file_list)) {
 
 ```{r}
 thomas_intprods <- bind_rows(int_prod, thomas_files[[1]]) %>% 
-  bind_rows(thomas_files[[2]])
+  bind_rows(thomas_files[[2]]) %>% 
+  bind_rows(thomas_files[[3]]) %>% 
+  bind_rows(thomas_files[[4]]) 
 ```
 
 ```{r}
@@ -487,6 +512,10 @@ thomas_prods <- bind_rows(thomas_endprods, thomas_intprods)
 
 ```{r}
 saveRDS(thomas_prods, paste(dir1, "/thomas_allprods.RDS", sep = ""))
+```
+
+```{r}
+saveRDS(thomas_prods, here("Data/Cleaned/thomas_allprods.RDS"))
 ```
 
 
