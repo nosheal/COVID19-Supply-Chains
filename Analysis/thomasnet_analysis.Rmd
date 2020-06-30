@@ -23,11 +23,14 @@ library(ggthemes)
 library(tm)
 library(here)
 library(ggrepel)
+library(lubridate)
 ```
 
 ```{r}
-thomas_an <- readRDS(here("Data/Cleaned/fm_resp.RDS"))
-int_prod <- readRDS(here("Data/Cleaned/int_prod.RDS"))
+thomas_an <- readRDS(here("Data/Cleaned/fm_resp.RDS")) %>% 
+  filter(date == mdy("05/30/2020"))
+int_prod <- readRDS(here("Data/Cleaned/int_prod.RDS")) %>% 
+  filter(date == mdy("05/30/2020"))
 ```
 
 This document analyzes cleaned thomasnet data. Thomasnet data provides a picture of the US supply chain for specific categories. In this document, we focus on analyzing the face mask/respirator supply chain. 
@@ -65,13 +68,14 @@ fig1 <- thomas_struc %>%
   ungroup() %>% 
   mutate(specific_product = reorder(specific_product, pos) ) %>% 
   ggplot(aes(reorder(specific_product, -pos), n, fill = specific_product, label = n)) +
-  geom_col(position = "dodge", show.legend = FALSE) + 
   scale_fill_brewer(palette = "Set2") +
   theme_bw() + 
   coord_flip() + 
   labs(title = "Number of Suppliers by Product Type", subtitle = "Thomasnet 5/29/20", y = "", x = "", fill = "Specific Product")
 
-fig1lab <- fig1 + geom_label(show.legend = FALSE) 
+fig1lab <- fig1 + 
+  geom_col(position = "dodge", show.legend = FALSE) +
+  geom_label(show.legend = FALSE) 
 
 fig1lab
 ```
@@ -79,10 +83,11 @@ fig1lab
 ## Segmenting by FDA Requirements
 
 ```{r}
-fda_graph <- thomas_struc %>% 
+poss_graph <- thomas_struc %>% 
   filter(specific_product != "NA") %>% 
   mutate(useful = case_when(
     is.na(useful) ~ "Unknown", 
+    useful == "Affirmatively" ~ "Possibly",
     TRUE ~ useful
   )) %>% 
   group_by(broad_product, specific_product, useful) %>% 
@@ -97,20 +102,61 @@ fda_graph <- thomas_struc %>%
     specific_product == "Cloth Masks" ~ 4, 
   )) %>% 
   mutate(specific_product = fct_reorder(specific_product, -pos),
-         n_fda = case_when(
+         n_aff = case_when(
            useful == "Affirmatively" ~ n
+  ),
+           n_poss = case_when(
+           useful %in% c("Possibly") ~ n
   ))
 ```
 
 
 ```{r}
 fig2 <- fig1 +
-  geom_col(data = fda_graph, aes(specific_product, n_fda, fill = specific_product), color = "Black", position = "stack") +
-  geom_label(data = fda_graph, aes(label = n_fda), show.legend = FALSE) +
-  labs(fill = "Affirmatively Meets FDA Specs")
+  geom_col(position = "dodge", show.legend = FALSE, alpha = 0.7) +
+  geom_col(data = poss_graph, aes(specific_product, n_poss, fill = specific_product), color = "Black", position = "stack", show.legend = FALSE) +
+  geom_label(data = poss_graph, aes(label = n_poss), show.legend = FALSE) +
+  labs(subtitle = "Thomasnet 5/29/20. \nSelf-Identifying as Serving Medical Markets or Affirmatively Meeting FDA Specs")
 
 fig2
 ```
+
+```{r}
+aff_graph <- thomas_struc %>% 
+  filter(specific_product != "NA") %>% 
+  mutate(useful = case_when(
+    is.na(useful) ~ "Unknown",
+    TRUE ~ useful
+  )) %>% 
+  group_by(broad_product, specific_product, useful) %>% 
+  count() %>% 
+  ungroup() %>% 
+  mutate(pos = case_when(
+    specific_product == "Respirators and Face Masks" ~ 1, 
+    specific_product == "Face Masks Only" ~ 2, 
+    specific_product == "Respirators Only" ~ 3, 
+    specific_product == "Non-Woven Fabric" ~ 5, 
+    specific_product == "No Latex Elastic" ~ 6,
+    specific_product == "Cloth Masks" ~ 4, 
+  )) %>% 
+  mutate(specific_product = fct_reorder(specific_product, -pos),
+         n_aff = case_when(
+           useful == "Affirmatively" ~ n
+  ))
+```
+
+
+```{r}
+fig3 <- fig1 +
+  geom_col(position = "dodge", show.legend = FALSE, alpha = 0.3, color = "light grey") +
+  geom_col(data = poss_graph, aes(specific_product, n_poss, fill = specific_product), color = "dark grey", position = "stack", show.legend = FALSE, alpha = 0.75) +
+    geom_col(data = aff_graph, aes(specific_product, n_aff, fill = specific_product), color = "black", position = "stack", show.legend = FALSE) +
+  geom_label(data = aff_graph, aes(label = n_aff), show.legend = FALSE) +
+  labs(subtitle = "Thomasnet 5/29/20. \nSelf-Identifying as Affirmatively Meeting FDA Specs")
+
+fig3
+```
+
 
 ```{r}
 thomas_struc %>% 
@@ -177,7 +223,7 @@ sup1 <- thomas_struc %>%
   coord_flip() + 
   ggplot2:: annotate("label", x = 2.8, y = 85, label = "End Products") + 
     ggplot2:: annotate("label", x = 1.8, y = 85, label = "Intermediary Products") + 
-  labs(title = "Number of Suppliers by Product and Supplier Type", subtitle = "Affirmatively Meeting FDA Specs, Thomasnet 5/29/20", y = "", x = "", fill = "Supplier Type") 
+  labs(title = "Number of Suppliers by Product and Supplier Type", subtitle = "Self-Identifying as Meeting FDA Specs, Thomasnet 5/29/20", y = "", x = "", fill = "Supplier Type") 
 ```
 
 ```{r}
@@ -237,14 +283,14 @@ sup2 <- thomas_struc %>%
   geom_label(position=position_dodge(width=1), aes(label = change_lab), fill = brewer.pal(3, "Set3")[1], hjust = 3, vjust = 1) +
   ggplot2:: annotate("label", x = 2.8, y = 85, label = "End Products") + 
     ggplot2:: annotate("label", x = 1, y = 85, label = "Intermediary Products") + 
-  labs(title = "Number of Suppliers by Product and Supplier Type", subtitle = "Affirmatively or Possibly Meeting FDA Specs, Thomasnet 5/29/20. \n% Change Relative to Affirmatively Alone", y = "", x = "", fill = "Supplier Type") 
+  labs(title = "Number of Suppliers by Product and Supplier Type", subtitle = "Self-Identifying as Serving Medical Market or Meeting FDA Specs. \nThomasnet 5/29/20. \n% Change Relative to Self-Identifying as Meeting FDA Specs Alone", y = "", x = "", fill = "Supplier Type") 
 ```
 
 
 ### Proportions
 
 ```{r}
-thomas_struc %>%
+prop_end <- thomas_struc %>%
   filter(useful %in% c("Affirmatively")) %>% 
   filter(!is.na(specific_product)) %>% 
   mutate(broad_loc = case_when(
@@ -262,18 +308,18 @@ thomas_struc %>%
     broad_loc == "Manufacturer" ~ prop
   ),2)) %>% 
   ggplot(aes(specific_product, prop, fill = broad_loc, label = lab_prop)) +
-  geom_col(position = "stack") + 
+  geom_col(position = "stack", show.legend = FALSE) + 
   geom_label(show.legend = FALSE) + 
   scale_fill_manual(values = my_pal) +
   coord_flip() +
   theme_bw() + 
-  labs(title = "Prop of US Suppliers of End Products, \nby Supplier Type", subtitle = "Affirmatively meets FDA Specs, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
+  labs(title = "Prop of US Suppliers of End Products, \nby Supplier Type", subtitle = "Self-Identifying as Meeting FDA Specs, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
 ```
 
 We are interested in performing a similar analysis on intermediary products. 
 
 ```{r}
-thomas_struc %>%
+prop_int <- thomas_struc %>%
   filter(useful %in% c("Affirmatively")) %>% 
   filter(!is.na(specific_product)) %>%
   mutate(broad_loc = case_when(
@@ -296,7 +342,7 @@ thomas_struc %>%
   scale_fill_manual(values = my_pal) +
   coord_flip() +
   theme_bw() + 
-  labs(title = "Prop of US Suppliers of Intermediary Products, \nby Supplier Type", subtitle = "Affirmatively meets FDA Specs, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
+  labs(title = "Prop of US Suppliers of Intermediary Products, \nby Supplier Type", subtitle = "Self-Identifying as Meeting FDA Specs, Thomasnet 5/29/2020", fill = "Supplier Type", x = "", y = "Proportion")
 ```
 
 ```{r}
@@ -359,7 +405,7 @@ fig3 <- thomas_time %>%
   scale_fill_manual(values = my_pal) + 
   scale_color_manual(values = my_pal) + 
   facet_wrap(~specific_product) + 
-  labs(title = "Thomasnet Suppliers Over Time", subtitle = "By Supplier Type, All Product Specs", x = "", y = "Suppliers", fill = "") + 
+  labs(title = "Thomasnet Suppliers Self-Identifying as Producing a Specific Product, 05/30/20 - 06/30/20", subtitle = "By Supplier Type, All Product Specs", x = "", y = "Suppliers", fill = "") + 
   theme_bw()
 ```
 
@@ -391,8 +437,66 @@ fig4 <- thomas_time_fda %>%
   theme_bw()
 ```
 
+# Identifying Companies that have pivoted
 
-# Checking Validity of Product Modeling Possibilities 
+To identify companies that have pivoted, we begin by defining a list of words that identify if a company has pivoted or not. 
+
+```{r}
+pivot_list <- c("pivot", "shift", "new", "scale", "ramp", "increase", "now")
+```
+
+```{r}
+paste(unlist(pivot_list), sep = "")
+```
+
+
+```{r}
+thomas_pivot <- thomas_all %>% 
+  mutate(desc_low = tolower(desc)) %>% 
+  mutate(pivot_poss = case_when(
+           str_detect(desc_low, " pivot") | 
+            str_detect(desc_low, " shift") | 
+            str_detect(desc_low, " new ") | 
+            str_detect(desc_low, " scaled") | 
+            str_detect(desc_low, " scale up") |
+            str_detect(desc_low, " ramp") | 
+            str_detect(desc_low, " increase") |
+            str_detect(desc_low, " now")  ~ 1))
+```
+
+```{r}
+thomas_pivot %>% 
+  filter(!is.na(pivot_poss)) %>% 
+  select(company, date, desc, pivot_poss) %>% 
+  view()
+```
+
+```{r}
+mypal2 <- c(brewer.pal(6, "Set2")[1], brewer.pal(6, "Set2")[2], brewer.pal(6, "Set2")[4], brewer.pal(6, "Set2")[3], brewer.pal(6, "Set2")[5], "grey")
+```
+
+
+```{r}
+thomas_pivot %>% 
+  filter(!is.na(pivot_poss), !is.na(specific_product)) %>%
+  group_by(date, specific_product) %>% 
+  count() %>% 
+  ungroup() %>% 
+  mutate(specific_product = reorder(specific_product, -n)) %>% 
+  ggplot(aes(date, n, fill = specific_product)) + 
+  geom_point(shape = 21, alpha = 0.7, color = "black", size = 4) + 
+  geom_line(aes(color = specific_product), show.legend = FALSE) + 
+  scale_fill_manual(values = mypal2) +
+  scale_color_manual(values = mypal2) +
+  labs(title = "Suppliers With Pivot or Scale Relevant \nWords in Thomasnet Descriptions", subtitle = "Words: 'pivot', 'shift', 'new', 'scaled', 'scale up', 'ramp', 'increase', 'now'", y = "Unique Suppliers", fill = "Specific Product", x = "") + 
+  theme_bw() 
+```
+
+
+
+# JUNK WORK 
+
+## Checking Validity of Product Modeling Possibilities 
 
 ```{r}
 thomas_struc %>% 
@@ -407,7 +511,7 @@ thomas_struc %>%
 ```
 
 
-# Using Tidytext to Model Differences Between Supplier Types  
+## Using Tidytext to Model Differences Between Supplier Types  
 
 ```{r}
 thomas_text <- thomas_struc %>% 
@@ -443,7 +547,7 @@ thomas_fm %>%
 
 However, this does not mean that these products are NOT useful.
 
-## Begining to tidy the text
+### Begining to tidy the text
 
 We start by removing "stop words" such as "the", "of," to" and so forth. We can use a previously defined dictionary here, however we will also want to modify it to make sure to preserve some words we care about. 
 
@@ -527,7 +631,7 @@ both <- top_words %>%
 
 We see that there do appear to be some differences between our categories. 
 
-# An Attempt at Topic Modeling
+## An Attempt at Topic Modeling
 
 First we turn our tidy object into a document term matrix. 
 

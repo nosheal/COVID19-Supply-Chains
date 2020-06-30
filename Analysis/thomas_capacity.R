@@ -29,11 +29,12 @@ cap_det %>%
          count_lab = case_when(
            `Monthly Capacity` == max(`Monthly Capacity`) ~ paste(count, " Companies")
            )) %>% 
-  ggplot(aes(Product, `Monthly Capacity`, group = company)) + 
-  geom_point(position = "stack", color = "Black") + 
-  geom_text(aes(label = count_lab), vjust = -2) + 
+  filter(!Product %in% c("Cloth Masks","Face Shields"), str_detect(company, "Lining", negate = TRUE)) %>% 
+  ggplot(aes(Product, `Monthly Capacity`, fill = company)) + 
+  geom_col(position = "stack", color = "Black", width = .3) + 
+  scale_fill_brewer(palette = "Set3") +
   scale_y_continuous(labels = scales::comma) + 
-  labs(title = "Maximum Monthly Capacity", subtitle = "Data from Thomasnet, 5/29/20. \n19 Companies Total (~7% of Total Universe)", y = "Maximum Units per Month") + 
+  labs(title = "Maximum Monthly Capacity", subtitle = "Data from Thomasnet, 5/29/20. \n9 Unique Suppliers", y = "Maximum Units per Month", fill = "") + 
   theme_bw()
 
 cap_det %>% 
@@ -48,7 +49,7 @@ cap_det %>%
   geom_label(aes(label = str_wrap(desc2)), size = 3, y = 1000000) + 
   scale_y_continuous(labels = scales::comma) + 
   coord_flip() + 
-  labs(title = "Maximum Monthly Capacity, Selected Suppliers", subtitle = "Data from Thomasnet, 5/29/20. \n7 Companies Total (~6.7% of Total Affirmatively FDA Approved Manufacturing Universe)", y = "Maximum Respirators per Month", x = "") + 
+  labs(title = "Maximum Monthly Capacity, Selected Suppliers", subtitle = "Data from Thomasnet, 5/29/20. \n7 Companies Total (~6.7% of Total Self-Identifying as FDA Approved Manufacturing Universe)", y = "Maximum Respirators per Month", x = "") + 
   theme_bw()
 
 cap_det %>% 
@@ -62,6 +63,6 @@ cap_det %>%
   geom_col(position = "stack", fill = "light grey", color = "Black", width = .3) + 
   geom_label(aes(label = str_wrap(desc)), size = 3, y = 10000000) + 
   scale_y_continuous(labels = scales::comma) + 
-  labs(title = "Maximum Monthly Capacity, Selected Suppliers", subtitle = "Data from Thomasnet, 5/29/20. ", y = "Maximum Respirators per Month", x = "") + 
+  labs(title = "Maximum Monthly Capacity, USA Lining Inc", subtitle = "Data from Thomasnet, 5/29/20. \nCompany Located in Norman, Oklahoma ", y = "Maximum Units per Month", x = "") + 
   theme_bw()
 

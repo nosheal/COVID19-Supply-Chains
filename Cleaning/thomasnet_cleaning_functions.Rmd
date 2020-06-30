@@ -58,7 +58,6 @@ read_bind <- function(date) {
 
 ```{r}
 test <- read_bind(date = '05_30')
-
 ```
 
 ### Remove Duplicates and Clean Words
@@ -70,7 +69,7 @@ remove_dups <- function(data) {
   group_by(company, desc) %>% 
   count() %>% 
   filter(n == 2) %>% 
-  mutate(search_prod = "Face Masks and N95 Respirators", broad_product = "End Product") %>% 
+  mutate(search_prod = "Face Masks and N95 Respirators") %>% 
   select(-n)
   
   thomas_base <- anti_join(data, double, by = c("company", "desc")) %>% 
@@ -101,7 +100,8 @@ remove_dups <- function(data) {
   
   thomas_an <- anti_join(thomas_clean1, recat, by = c("company", "location", "loc_desc"))
   
-  thomas_clean <- bind_rows(thomas_an, recat)
+  thomas_clean <- bind_rows(thomas_an, recat) %>% 
+    mutate(broad_product = "End Product")
   
   return(thomas_clean)
     
@@ -219,7 +219,7 @@ fda_specs <- function(data) {
         str_detect(desc, "NIOSH") |
         str_detect(desc, "801") |
         str_detect(desc, "KN95") |
-        str_detect(desc, fixed("3M", ignore_case = FALSE)) |
+        str_detect(desc, fixed("Brands+ 3M", ignore_case = FALSE)) |
         str_detect(desc, fixed("3-ply", ignore_case = FALSE)) ~ "Affirmatively",
       str_detect(desc, fixed("medical", ignore_case = TRUE)) |
         str_detect(desc, fixed("surgical", ignore_case = TRUE)) |
@@ -280,16 +280,9 @@ thomas_test <- clean_endprods("06_05")
 ## Combining datasets
 
 ```{r}
-fm_resp <- readRDS(here("Data/Cleaned/fm_resp.RDS")) %>% 
-  mutate(date = mdy(05302020))
-```
-
-
-```{r}
 thomas_files <- list()
 
 file_list <- list.files(dir)
-file_list <- file_list[-1]
 
 i <- 1
 
@@ -306,10 +299,10 @@ for (file in 1:length(file_list)) {
 ```
 
 ```{r}
-thomas_endprods <- bind_rows(fm_resp, thomas_files[[1]]) %>% 
-  bind_rows(thomas_files[[2]]) %>% 
+thomas_endprods <- bind_rows(thomas_files[[1]], thomas_files[[2]]) %>% 
   bind_rows(thomas_files[[3]]) %>% 
-  bind_rows(thomas_files[[4]]) 
+  bind_rows(thomas_files[[4]]) %>% 
+  bind_rows(thomas_files[[5]]) 
 ```
 
 ```{r}
@@ -318,12 +311,6 @@ saveRDS(thomas_endprods, paste(dir1, "/thomas_endprods.RDS", sep = ""))
 ```
 
 # Intermediary Products
-
-
-```{r}
-int_prod <- readRDS(here("Data/Cleaned/int_prod.RDS")) %>% 
-  mutate(date = mdy(05302020))
-```
 
 ## Defining Functions
 
@@ -392,7 +379,6 @@ cat_2 <- function(data) {
         str_detect(desc, fixed("medical", ignore_case = TRUE)) | 
         str_detect(desc, fixed("surgical", ignore_case = TRUE)) |
         str_detect(desc, fixed("dental", ignore_case = TRUE)) |
-        str_detect(desc, fixed("polypropylene", ignore_case = TRUE)) |
         str_detect(desc, "dust"))  ~ "cat_2")) %>% 
     mutate(cat_2 = case_when(
       cat_1 == "cat_1" ~ NA_character_,
@@ -415,7 +401,14 @@ cat_3 <- function(data) {
     mutate(cat_3 = case_when(
       cat_1 == "cat_1" | cat_2 == "cat_2" ~ NA_character_,
       TRUE ~ cat_3
-    )) 
+    ), 
+    cat_4 = case_when(str_detect(desc, fixed("polypropylene", ignore_case = TRUE)) ~ "cat_4")) %>% 
+    mutate(cat_4 = case_when(
+      cat_1 == "cat_1" | cat_2 == "cat_2" | cat_3 == "cat_3" ~ NA_character_,
+      TRUE ~ cat_4
+    ))
+      
+    
 }
 ```
 
@@ -431,7 +424,12 @@ fda_specs_nw <- function(data) {
     company %in% c("Technical Fibre Products, Inc.", "	Goodfellow Corp.") ~ "cat_3", 
     TRUE ~ cat_3
   )) %>% 
-    filter(!is.na(cat_1) | !is.na(cat_2) | !is.na(cat_3))
+    filter(!is.na(cat_1) | !is.na(cat_2) | !is.na(cat_3) | !is.na(cat_4)) %>% 
+  mutate(useful = case_when(
+    cat_1 == "cat_1" ~ "Affirmatively", 
+    cat_2 == "cat_2" | cat_3 == "cat_3" ~ "Possibly", 
+    cat_4 == "cat_4" ~ "Unknown"
+  ))
 }
 ```
 
@@ -479,7 +477,6 @@ clean_int <- function(date) {
 thomas_files <- list()
 
 file_list <- list.files(dir)
-file_list <- file_list[-1]
 
 i <- 1
 
@@ -496,10 +493,10 @@ for (file in 1:length(file_list)) {
 ```
 
 ```{r}
-thomas_intprods <- bind_rows(int_prod, thomas_files[[1]]) %>% 
-  bind_rows(thomas_files[[2]]) %>% 
+thomas_intprods <- bind_rows(thomas_files[[1]], thomas_files[[2]]) %>% 
   bind_rows(thomas_files[[3]]) %>% 
-  bind_rows(thomas_files[[4]]) 
+  bind_rows(thomas_files[[4]]) %>% 
+  bind_rows(thomas_files[[5]]) 
 ```
 
 ```{r}
@@ -518,5 +515,12 @@ saveRDS(thomas_prods, paste(dir1, "/thomas_allprods.RDS", sep = ""))
 saveRDS(thomas_prods, here("Data/Cleaned/thomas_allprods.RDS"))
 ```
 
+```{r}
+saveRDS(thomas_intprods, here("Data/Cleaned/int_prod.RDS"))
+```
+
+```{r}
+saveRDS(thomas_endprods, here("Data/Cleaned/fm_resp.RDS"))
+```
 
 
