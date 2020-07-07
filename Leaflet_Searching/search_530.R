@@ -10,7 +10,7 @@
 library(shiny)
 library(shinyjs)
 library(tidyverse)
-library(ggmap)
+library(shinyWidgets)
 library(leaflet)
 library(leaflet.extras)
 library(leaflet.esri)
@@ -22,6 +22,7 @@ library(widgetframe)
 library(lattice)
 library(DT)
 library(tidytext)
+library(lubridate)
 library(here)
 
 #Load the Data
@@ -56,7 +57,13 @@ df_for_maps <- df_for_maps %>%
       specific_product == "No Latex Elastic" ~ "blue")
   )
 
-df_for_maps <- df_for_maps %>% 
+df_for_maps <- df_for_maps %>%
+  mutate(useful_map = case_when(
+    useful == "Affirmatively" ~ "Producing Standard Product for FDA Approved Hospital Grade Masks", 
+    useful == "Possibly" ~ "Producing Products that Meet Technical Requirements of Hospital Grade Masks", 
+    useful == "Unknown" ~ "Unknown", 
+    is.na(useful) ~ "Unknown"
+  )) %>% 
   filter(company != "Wurzburg", company != "Wurzburg, Inc.",
          company != "Cinder & Sky, Inc.") %>% 
   mutate(group = if_else(is.na(group), "Missing", group)) %>% 
@@ -169,7 +176,7 @@ ui <- fluidPage(
                                      )
                                      
                               )
-                              ),
+                            ),
                             fluidRow(
                               column(3,
                                           selectInput("demand_select", "Demand Layer", 
@@ -177,24 +184,30 @@ ui <- fluidPage(
                                           )
                               ),
                               column(3, 
-                                     checkboxGroupInput("covid_select", "Affirmatively Participating in COVID-19 Response?", 
-                                                        choices = unique(df_for_maps$covid_resp), selected = c("Yes", "Unknown")
+                                     checkboxGroupInput("med_select", "Affirmatively Serving the Medical Market?", 
+                                                        choices = unique(df_for_maps$medical_market), selected = c("Yes", "Unknown")
                                      )
                               ),
                               column(3, 
-                                     checkboxGroupInput("fda_select", "Meets FDA/Technical Specs?", 
-                                                        choices = c("Affirmatively", "Possibly", "Unknown"), selected = c("Affirmatively")
+                                     checkboxGroupInput("fda_select", "Technical Specs", 
+                                                        choices = c("Producing Standard Product for FDA Approved Hospital Grade Masks", "Producing Products that Meet Technical Requirements of Hospital Grade Masks", "Unknown"), selected = c("Producing Standard Product for FDA Approved Hospital Grade Masks", "Producing Products that Meet Technical Requirements of Hospital Grade Masks")
                                      )
                               )
                             ),
-                            absolutePanel(bottom = 260, right = 40,
-                                          selectizeInput("product_select", "Search (not case sensitive)", 
-                                                         choices = unique(df_for_maps_words$word), selected = NULL, multiple = TRUE),
-                                          radioButtons("search_comb", "Combine Search Terms With...",
-                                                       choices = c("and", "or"), selected = "or", inline = TRUE)
-                            ),
-                            absolutePanel(bottom = 10, right = 10,
-                                      "Data from Thomasnet (5/29/30). Not all supplier locations are shown."
+                            fluidRow(
+                              column(3,
+                                     sliderTextInput("date_select", "Date", 
+                                                     choices = unique(df_for_maps$date), selected = ymd("2020-05-30")
+                                     )
+                              ),
+                              column(3, 
+                                     selectizeInput("product_select", "Search (not case sensitive)", 
+                                                    choices = unique(df_for_maps_words$word), selected = NULL, multiple = TRUE),
+                                     radioButtons("search_comb", "Combine Search Terms With...",
+                                                  choices = c("and", "or"), selected = "or", inline = TRUE)
+                                     ), 
+                              column(3, 
+                                     "Data from Thomasnet (5/29/20 - 07/06/20). Not all supplier locations are shown.")
                             )
                         )
                ),
@@ -233,14 +246,19 @@ server <- function(input, output, session) {
   # We deal with each supply "group" seperately and merge it back together into our final dataframe
   # There is likely a more efficient way to do this, and this section should be revised. 
 
-  filteredFDA <- reactive({
+  filteredDate <- reactive({
     df_for_maps %>% 
-      filter(useful %in% input$fda_select)
+      filter(date == ymd(input$date_select))
+  })
+  
+  filteredFDA <- reactive({
+    filteredDate() %>% 
+      filter(useful_map %in% input$fda_select)
   })
   
   filteredCovid <- reactive({
     filteredFDA() %>% 
-      filter(covid_resp %in% input$covid_select)
+      filter(medical_market %in% input$med_select)
   })
   
   filteredProduct <- reactive({

@@ -303,7 +303,7 @@ thomas_fm <- fd %>%
 ```
 
 ```{r}
-save_loc <- paste(dir, "/06_29/thomas_fm_06292020.RDS", sep = "")
+save_loc <- paste(dir, "/07_06/thomas_fm_07062020.RDS", sep = "")
 ```
 
 ```{r}
@@ -395,16 +395,12 @@ thomas_resp <- fd %>%
 ```
 
 ```{r}
-save_loc <- paste(dir, "/06_29/thomas_resp_06292020.RDS", sep = "")
+save_loc <- paste(dir, "/07_06/thomas_resp_07062020.RDS", sep = "")
 ```
 
 
 ```{r}
 saveRDS(thomas_resp, save_loc)
-```
-
-```{r}
-saveRDS(final_data, here("Data/thomas_resp_06222020.RDS"))
 ```
 
 # Intermediary Products 
@@ -554,17 +550,13 @@ nonwoven_final <- nonwoven_fd %>%
 ```
 
 ```{r}
-save_loc <- paste(dir, "/06_29/nonwoven_06292020.RDS", sep = "")
+save_loc <- paste(dir, "/07_06/nonwoven_07062020.RDS", sep = "")
 ```
 
 ```{r}
 saveRDS(nonwoven_final, save_loc)
 ```
 
-
-```{r}
-saveRDS(nonwoven_final, here("Data/nonwoven_06222020.RDS"))
-```
 
 ## No Latex Elastic 
 
@@ -638,17 +630,13 @@ nolatex_final <- nolatex_fd%>%
 ```
 
 ```{r}
-save_loc <- paste(dir, "/06_29/nolatex_06292020.RDS", sep = "")
+save_loc <- paste(dir, "/07_06/nolatex_07062020.RDS", sep = "")
 ```
 
 ```{r}
 saveRDS(nolatex_final, save_loc)
 ```
 
-
-```{r}
-saveRDS(nolatex_final, here("Data/nolatex_06222020.RDS"))
-```
 
 # Conclusion 
 

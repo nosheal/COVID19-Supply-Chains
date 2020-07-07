@@ -203,10 +203,10 @@ covid_part <- function(data){
 }
 ```
 
-### Define FDA specs
+### Define Usefulness Categrogies
 
 ```{r}
-fda_specs <- function(data) {
+fda_specs_old <- function(data) {
   data %>% 
     mutate(useful = case_when(
         str_detect(desc, fixed("N95", ignore_case = TRUE)) | 
@@ -232,6 +232,55 @@ fda_specs <- function(data) {
   )
 }
 ```
+
+```{r}
+fda_specs <- function(data) {
+  data %>% 
+    mutate(useful = case_when(
+        str_detect(desc, fixed("N95", ignore_case = TRUE)) | 
+        str_detect(desc, fixed("ASTM", ignore_case = FALSE))|
+        str_detect(desc, fixed("ANSI", ignore_case = FALSE)) |
+        str_detect(desc, fixed("AAMI", ignore_case = FALSE)) |
+        str_detect(desc, "FDA") |
+        str_detect(desc, "NIOSH") |
+        str_detect(desc, "801") |
+        str_detect(desc, "KN95") |
+        str_detect(desc, fixed("Brands+ 3M", ignore_case = FALSE))  ~ "Affirmatively",
+        str_detect(desc, fixed("3-ply", ignore_case = TRUE)) | 
+        (str_detect(desc, fixed("cleanroom", ignore_case = TRUE)) & (str_detect(desc, fixed("respirator", ignore_case = TRUE)) | str_detect(desc, fixed("mask", ignore_case = TRUE)))) |
+        str_detect(desc, fixed("ISO", ignore_case = FALSE)) |
+        str_detect(desc, fixed("medical", ignore_case = TRUE)) |
+        str_detect(desc, fixed("surgical", ignore_case = TRUE)) |
+        str_detect(desc, fixed("dental", ignore_case = TRUE)) |
+        str_detect(desc, fixed("veterinary", ignore_case = TRUE)) |
+        str_detect(desc, fixed("dust mask", ignore_case = TRUE)) |
+        str_detect(desc, fixed("level ", ignore_case = TRUE)) |
+        str_detect(desc, "PPE") | 
+        str_detect(desc, fixed("non-woven", ignore_case = TRUE)) ~ "Possibly")
+  )
+}
+```
+
+### Define Medical Market
+
+```{r}
+med_mark <- function(data) { 
+  data %>% 
+    mutate(medical_market = case_when(
+      str_detect(desc, fixed("hospital", ignore_case = TRUE)) |
+        str_detect(desc, fixed("medical", ignore_case = TRUE)) | 
+        str_detect(desc, fixed("surgical", ignore_case = TRUE)) |
+        str_detect(desc, fixed("dental", ignore_case = TRUE)) |
+        str_detect(desc, fixed("PPE", ignore_case = FALSE)) |
+        str_detect(desc, fixed("veterinary", ignore_case = TRUE)) ~ "Serving Medical Market"
+    )) %>% 
+    mutate(medical_market = case_when(
+      is.na(medical_market) ~ "Unknown", 
+      TRUE ~ medical_market
+    ))} 
+```
+
+
 
 ### Define Suppliers
 
@@ -266,6 +315,7 @@ clean_endprods <- function(date){
     covid_part() %>% 
     fda_specs() %>% 
     suppliers() %>%
+    med_mark() %>% 
       mutate(date = mdy(file_suffix))
     
     
@@ -302,7 +352,8 @@ for (file in 1:length(file_list)) {
 thomas_endprods <- bind_rows(thomas_files[[1]], thomas_files[[2]]) %>% 
   bind_rows(thomas_files[[3]]) %>% 
   bind_rows(thomas_files[[4]]) %>% 
-  bind_rows(thomas_files[[5]]) 
+  bind_rows(thomas_files[[5]]) %>% 
+  bind_rows(thomas_files[[6]])
 ```
 
 ```{r}
@@ -346,6 +397,7 @@ read_lat <- function(date) {
 
 
 ### Affirmatively Producing Covid-19 Relevant Fabric
+
 ```{r}
 cat_1 <- function(data) {
   data %>% 
@@ -355,15 +407,9 @@ cat_1 <- function(data) {
            desc = str_replace(desc, fixed("melt-blown", ignore_case = TRUE), "meltblown"), 
            desc = str_replace(desc, fixed("needlepunch", ignore_case = TRUE), "needle punch")) %>% 
     mutate(cat_1 = case_when(
-      str_detect(desc, fixed("gsm", ignore_case = TRUE)) |
         str_detect(desc, fixed("spunbonded", ignore_case = TRUE)) | 
         str_detect(desc, fixed("needle punch", ignore_case = TRUE)) | 
-        str_detect(desc, fixed("meltblown", ignore_case = TRUE)) |
-      str_detect(desc, "ISO") |
-      str_detect(desc, fixed("spunlace", ignore_case = TRUE)) |
-      str_detect(desc, fixed("hydroentangled", ignore_case = TRUE)) |
-      str_detect(desc, fixed("ghz", ignore_case = TRUE)) |
-      str_detect(desc, fixed("electrospun", ignore_case = TRUE))  ~ "cat_1"))
+        str_detect(desc, fixed("meltblown", ignore_case = TRUE)) ~ "cat_1"))
 }
   
 ```
@@ -375,11 +421,13 @@ cat_2 <- function(data) {
   data %>% 
     cat_1() %>% 
     mutate(cat_2 = case_when(
-      (str_detect(desc, fixed("hospital", ignore_case = TRUE)) |
-        str_detect(desc, fixed("medical", ignore_case = TRUE)) | 
-        str_detect(desc, fixed("surgical", ignore_case = TRUE)) |
-        str_detect(desc, fixed("dental", ignore_case = TRUE)) |
-        str_detect(desc, "dust"))  ~ "cat_2")) %>% 
+      (str_detect(desc, fixed("spunlace", ignore_case = TRUE)) |
+      str_detect(desc, fixed("hydroentangled", ignore_case = TRUE)) |
+      str_detect(desc, fixed("ghz", ignore_case = TRUE)) |
+      str_detect(desc, fixed("gsm", ignore_case = TRUE)) |
+      str_detect(desc, fixed("electrospun", ignore_case = TRUE)) | 
+      str_detect(desc, "silver") | 
+      str_detect(desc, "nickel"))  ~ "cat_2")) %>% 
     mutate(cat_2 = case_when(
       cat_1 == "cat_1" ~ NA_character_,
       TRUE ~ cat_2
@@ -397,17 +445,12 @@ cat_3 <- function(data) {
     cat_1() %>% 
     cat_2() %>% 
     mutate(cat_3 = case_when(
-      str_detect(desc, "metal")  ~ "cat_3")) %>% 
+      str_detect(desc, "ISO") |
+      str_detect(desc, fixed("polypropylene", ignore_case = TRUE)) ~ "cat_3")) %>% 
     mutate(cat_3 = case_when(
       cat_1 == "cat_1" | cat_2 == "cat_2" ~ NA_character_,
       TRUE ~ cat_3
-    ), 
-    cat_4 = case_when(str_detect(desc, fixed("polypropylene", ignore_case = TRUE)) ~ "cat_4")) %>% 
-    mutate(cat_4 = case_when(
-      cat_1 == "cat_1" | cat_2 == "cat_2" | cat_3 == "cat_3" ~ NA_character_,
-      TRUE ~ cat_4
     ))
-      
     
 }
 ```
@@ -420,15 +463,12 @@ We now filter out entries that fit none of the above categories.
 fda_specs_nw <- function(data) {
   data %>%
     cat_3() %>% 
-    mutate(cat_3 = case_when(
-    company %in% c("Technical Fibre Products, Inc.", "	Goodfellow Corp.") ~ "cat_3", 
-    TRUE ~ cat_3
-  )) %>% 
-    filter(!is.na(cat_1) | !is.na(cat_2) | !is.na(cat_3) | !is.na(cat_4)) %>% 
+    med_mark() %>% 
+    filter(!is.na(cat_1) | !is.na(cat_2) | !is.na(cat_3) | medical_market != "Unknown") %>% 
   mutate(useful = case_when(
     cat_1 == "cat_1" ~ "Affirmatively", 
-    cat_2 == "cat_2" | cat_3 == "cat_3" ~ "Possibly", 
-    cat_4 == "cat_4" ~ "Unknown"
+    cat_2 == "cat_2" ~ "Possibly",
+    cat_3 == "cat_3" ~ "Unknown"
   ))
 }
 ```
@@ -452,7 +492,8 @@ clean_int <- function(date) {
   lat <- read_lat(date) %>% 
     fda_specs_lat()
   
-  int_comb <- bind_rows(nw, lat)
+  int_comb <- bind_rows(nw, lat) %>% 
+    med_mark()
   
   int_comb %>% 
   mutate(broad_loc = case_when(
@@ -496,7 +537,8 @@ for (file in 1:length(file_list)) {
 thomas_intprods <- bind_rows(thomas_files[[1]], thomas_files[[2]]) %>% 
   bind_rows(thomas_files[[3]]) %>% 
   bind_rows(thomas_files[[4]]) %>% 
-  bind_rows(thomas_files[[5]]) 
+  bind_rows(thomas_files[[5]]) %>% 
+  bind_rows(thomas_files[[6]])
 ```
 
 ```{r}

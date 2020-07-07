@@ -37,6 +37,8 @@ cap_det %>%
   labs(title = "Maximum Monthly Capacity", subtitle = "Data from Thomasnet, 5/29/20. \n9 Unique Suppliers", y = "Maximum Units per Month", fill = "") + 
   theme_bw()
 
+my_pal <- c(brewer.pal(9, "Set3")[2], brewer.pal(9, "Set3")[3], brewer.pal(9, "Set3")[4], brewer.pal(9, "Set3")[6], brewer.pal(9, "Set3")[7], brewer.pal(9, "Set3")[8], brewer.pal(9, "Set3")[9])
+
 cap_det %>% 
   group_by(Product) %>% 
   mutate(count = n(), 
@@ -45,11 +47,12 @@ cap_det %>%
          )) %>% 
   filter(Product == "Respirators", str_detect(company, "Lining", negate = TRUE)) %>% 
   ggplot(aes(reorder(company, `Monthly Capacity`), `Monthly Capacity`, group = company)) + 
-  geom_col(position = "stack", fill = "light grey", color = "Black") + 
-  geom_label(aes(label = str_wrap(desc2)), size = 3, y = 1000000) + 
+  geom_col(aes(fill = company), position = "stack", color = "Black", show.legend = FALSE) + 
+  geom_label(aes(label = str_wrap(desc2)), size = 3, y = 1000000, show.legend = FALSE, alpha = 0.88) + 
   scale_y_continuous(labels = scales::comma) + 
+  scale_fill_manual(values = my_pal) +
   coord_flip() + 
-  labs(title = "Maximum Monthly Capacity, Selected Suppliers", subtitle = "Data from Thomasnet, 5/29/20. \n7 Companies Total (~6.7% of Total Self-Identifying as FDA Approved Manufacturing Universe)", y = "Maximum Respirators per Month", x = "") + 
+  labs(title = "Maximum Monthly Capacity, Selected Suppliers", subtitle = "Data from Thomasnet, 5/29/20. \n7 Companies Total (~3.4% of ThomasNet Manufacturers)", y = "Maximum Respirators per Month", x = "") + 
   theme_bw()
 
 cap_det %>% 

@@ -143,11 +143,20 @@ us_supply_maps <- us_supply_maps %>%
 Now we loop through the addresses to get the latitude and longitude of each address and add it to the original address data frame in the  new columns lat and long. 
 
 ```{r}
-origAddress <- us_supply_maps
+old_add <- readRDS(here("Data/Cleaned/geocoded.RDS"))
 ```
 
 
 ```{r}
+origAddress <- us_supply_maps %>% 
+  distinct(company, address, desc)
+```
+
+```{r}
+origAddress <- anti_join(origAddress, old_add)
+```
+
+```{r, include = FALSE}
 for(i in 1:nrow(origAddress))
 {
   result <- geocodeAddress(origAddress$address[i])
@@ -161,14 +170,23 @@ for(i in 1:nrow(origAddress))
 We immediately save these results. 
 
 ```{r}
-saveRDS(origAddress, here("Data/Cleaned/geocoded_5302020"))
+new_add <- bind_rows(old_add, origAddress)
+```
+
+
+```{r}
+saveRDS(new_add, here("Data/Cleaned/geocoded.RDS"))
 ```
 
 Let us see how well we did. 
 
+```{r}
+us_supply_geocoded <- left_join(us_supply_maps, origAddress)
+```
+
 
 ```{r}
-us_supply_geocoded <- origAddress %>% 
+us_supply_geocoded <- us_supply_geocoded %>% 
   mutate(lat = case_when(
     company == "Consolidated Cordage Corporation" ~ 26.3454374, 
     TRUE ~ lat), 
@@ -181,11 +199,11 @@ us_supply_geocoded <- origAddress %>%
 
 
 ```{r}
-us_supply_geocoded %>% 
+origAddress %>% 
   filter(is.na(lat)) %>% 
   count()
 ```
-Fortunately, again, out of our 1043 observations, only 64 return as with an invalid address. We add this to the same task as imputing multiple location data. 
+Fortunately, again, out of our `r origAddress %>% count()` observations, only `r origAddress %>% filter(is.na(lat)) %>% count()` return as with an invalid address. We add this to the same task as imputing multiple location data. 
 
 Save this as a new object to prepare for leaflet plotting. In doing so we want to define as identifying factors for this layer as possible. We want our final object to have the following format: 
 
@@ -220,6 +238,15 @@ us_supply_geocoded %>%
 
 # Format for maps
 
+```{r}
+us_supply_geocoded <- us_supply_geocoded %>% 
+  mutate(medical_market = case_when(
+    medical_market == "Serving Medical Market" ~ "Yes", 
+    TRUE ~ medical_market
+  ))
+```
+
+
 
 ## Prepare our Data
 
@@ -243,6 +270,8 @@ prepare_for_maps <- function(name, df) {
                                     df$broad_product, "<br>",
                                     "<strong>Specific Product:</strong>", 
                                     df$specific_product, "<br>",
+                                    "<strong>Serving Medical Market:</strong>", 
+                                    df$medical_market, "<br>",
                                     "<strong>Capacity:</strong>", 
                                     df$product_capacity, "<br>",
                                     "<strong>Lead Times:</strong>",
@@ -274,6 +303,10 @@ We now save our outputs to the locations that our other files can draw from.
 
 ```{r}
 saveRDS(df_for_maps, here("Data/Cleaned/df_for_maps.rds"))
+```
+
+```{r}
+saveRDS(df_for_maps, here("Data/df_for_maps.rds"))
 ```
 
 ### For shiny integration and searching 
