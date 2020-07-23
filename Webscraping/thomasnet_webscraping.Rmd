@@ -17,7 +17,7 @@ knitr::opts_chunk$set(echo = TRUE)
 This document will contain a program to webscrap and format Thomasnet search data. The results of this program are not complete and require additional cleaning/manual data entry, but this program should solve the problem of needing to download large Thomasnet searches. 
 
 ```{r}
-dir <- "C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls"
+dir <- "C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls/07_20"
 ```
 
 
@@ -303,7 +303,7 @@ thomas_fm <- fd %>%
 ```
 
 ```{r}
-save_loc <- paste(dir, "/07_06/thomas_fm_07062020.RDS", sep = "")
+save_loc <- paste(dir, "/thomas_fm_07202020.RDS", sep = "")
 ```
 
 ```{r}
@@ -395,7 +395,7 @@ thomas_resp <- fd %>%
 ```
 
 ```{r}
-save_loc <- paste(dir, "/07_06/thomas_resp_07062020.RDS", sep = "")
+save_loc <- paste(dir, "/thomas_resp_07202020.RDS", sep = "")
 ```
 
 
@@ -550,7 +550,7 @@ nonwoven_final <- nonwoven_fd %>%
 ```
 
 ```{r}
-save_loc <- paste(dir, "/07_06/nonwoven_07062020.RDS", sep = "")
+save_loc <- paste(dir, "/nonwoven_07202020.RDS", sep = "")
 ```
 
 ```{r}
@@ -630,7 +630,7 @@ nolatex_final <- nolatex_fd%>%
 ```
 
 ```{r}
-save_loc <- paste(dir, "/07_06/nolatex_07062020.RDS", sep = "")
+save_loc <- paste(dir, "/nolatex_07202020.RDS", sep = "")
 ```
 
 ```{r}

@@ -207,7 +207,7 @@ ui <- fluidPage(
                                                   choices = c("and", "or"), selected = "or", inline = TRUE)
                                      ), 
                               column(3, 
-                                     "Data from Thomasnet (5/29/20 - 07/06/20). Not all supplier locations are shown.")
+                                     "Data from Thomasnet (5/29/20 - 07/13/20). Not all supplier locations are shown.")
                             )
                         )
                ),
