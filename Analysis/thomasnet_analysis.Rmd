@@ -45,7 +45,10 @@ thomas_struc <- bind_rows(int_prod, thomas_an) %>%
   broad_loc = case_when(
     str_detect(desc, fixed("distributor", ignore_case = TRUE)) & str_detect(desc, fixed("manufacturer", ignore_case = TRUE), negate = TRUE) ~ "Distributor", 
     TRUE ~ broad_loc
-  ))
+  ))  %>% 
+  group_by(specific_product, company, date) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1)
 ```
 
 ```{r}
@@ -509,7 +512,7 @@ conf_all <- bind_rows(aff_nl, aff_nw) %>%
 
 ```{r}
 conf_all <- conf_all %>% 
-  group_by(company, specific_product, date, address) %>%
+  group_by(company, specific_product, date) %>%
   mutate(tal = seq(n()))
 ```
 
@@ -1242,9 +1245,11 @@ pivot_sup <- pivot_base +
 ```
 
 ```{r}
-pivot_manf <- pivot_sup +    
+pivot_manf <- pivot_base +    
   geom_area(data = thomas_pivot_manf, aes(date, manf_n, fill = specific_product, group = specific_product), position = "stack") + 
-    geom_point(data = thomas_pivot_manf, aes(date, manf_n, fill = specific_product, group = specific_product), shape = 21, alpha = 0.5, color = "black", size = 4, position = "stack")  
+    geom_point(data = thomas_pivot_manf, aes(date, manf_n, fill = specific_product, group = specific_product), shape = 21, alpha = 0.5, color = "black", size = 4, position = "stack") + 
+  scale_fill_manual(values = mypal2) +
+  labs(title = "Thomasnet Listed Manufacturers With Pivot or Scale Relevant \nWords in Thomasnet Descriptions", subtitle = "05/30/20 - 08/03/20 \nWords: 'pivot', 'shift', 'new', 'scaled', 'scale up', 'ramp', 'increase', 'now'", y = "Unique Thomasnet Suppliers", fill = "Specific Product", x = "")
 ```
 
 

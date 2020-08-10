@@ -1,0 +1,12 @@
+name: COVID19_domestic_manufacturers
+title: COVID19_domestic_manufacturers
+username:
+account: nosheal
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 2646870
+bundleId: 3483053
+url: https://nosheal.shinyapps.io/COVID19_domestic_manufacturers/
+when: 1596730237.02518
+asMultiple: FALSE
+asStatic: FALSE

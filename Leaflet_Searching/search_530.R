@@ -152,7 +152,7 @@ ui <- fluidPage(
 
     navbarPage("COVID-19 Supply Chains", id="nav",
                
-               tabPanel("US Face Masks and Respirators",
+               tabPanel("US Face Masks and Respirators - Thomasnet Suppliers",
                         div(class="outer",
                             
                             
@@ -222,7 +222,7 @@ ui <- fluidPage(
                             )
                         )
                ),
-               tabPanel("Ventilators",
+               tabPanel("Confirmed Domestic Manufacturing Entities",
                         div(class="outer",
                             
                             #leafletOutput

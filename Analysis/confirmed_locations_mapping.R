@@ -15,26 +15,38 @@ library(here)
 
 #Load the Data
 
-df_for_maps <- readRDS(here("Data/Cleaned/df_for_maps.rds"))
 
-df_for_maps_words <- df_for_maps %>% 
-  unnest_tokens(word, desc)
 
-stop_words <- stop_words %>% 
-  filter(!word %in% c("beyond", "changes",  "contains", "containing", "contain", "nearly", "only", "novel", "plus", "possible", "particular", "particularly", "provides", "probably")) %>% 
-  filter(lexicon == "SMART")
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/"
 
-tidy_maps <- df_for_maps_words %>% 
-  anti_join(stop_words) %>% 
-  filter(word != "19") %>% 
-  mutate(word = str_replace(word, "covid", "covid-19"))
+
+
+
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+
+
+df_for_maps <- readRDS(here("/conf_manfs_geocoded.RDS"))
+
+
+df_for_maps <- df_for_maps %>% 
+  mutate(pos = case_when(
+    specific_product == "Respirators and Face Masks" ~ 1, 
+    specific_product == "Face Masks Only" ~ 2, 
+    specific_product == "Respirators Only" ~ 3, 
+    specific_product == "Non-Woven Fabric" ~ 5, 
+    specific_product == "No Latex Elastic" ~ 6,
+    specific_product == "Cloth Masks" ~ 4, 
+  ), 
+  specific_product = reorder(specific_product, pos))
 
 # define colors
 
-sc_color <- colorFactor(c("red", "orange", "green", "cadetblue", "darkblue"), domain = df_for_maps$specific_product)
+sc_color <- colorFactor(c("cadetblue", "red", "darkblue", "green", "orange"), domain = df_for_maps$specific_product)
 
 
-## Set icons and colors (one for each layer) and prepare for maps
+
 ## Set icons and colors (one for each layer) and prepare for maps
 df_for_maps <- df_for_maps %>% 
   mutate(icon = case_when(
@@ -51,10 +63,6 @@ df_for_maps <- df_for_maps %>%
       specific_product == "Non-Woven Fabric" ~ "green",
       specific_product == "No Latex Elastic" ~ "orange")
   )
-
-df_for_maps <- df_for_maps %>% 
-  filter(company != "Wurzburg", company != "Wurzburg, Inc.") %>% 
-  mutate(group = if_else(is.na(group), "Missing", group))
 
 ### LOAD MAPPING PREREQS
 
@@ -114,7 +122,7 @@ m <- leaflet() %>%
   # add layers of maps (decided to provide three options)
   addProviderTiles(providers$Stamen.TonerLite, group = "Toner Lite") %>%
   registerPlugin(fontawesomePlugin) %>%
-        
+  
   # set the boundary of the map so that the user cannot zoom out of one world 
   # view of the map
   setMaxBounds(lng1 = 210,
@@ -132,7 +140,11 @@ m <- leaflet() %>%
                  }")
   )
   ) %>% 
-
+  addLegend(position = c("bottomleft"),
+            values = df_for_maps$specific_product,
+            pal = sc_color,
+            title = "Specific Product")
+  
   #add layer control option for clusters and map type 
   #addLayersControl(
   #baseGroups = c("OSM(Default)", "Google", "Toner Lite", "NatGeoWorldMap"),
@@ -141,15 +153,6 @@ m <- leaflet() %>%
   # options = layersControlOptions(collapsed = TRUE)
   #) %>% 
   # add legend (table) that shows which color represents which country of origin (color key) - bottom left (due to mini map)
-  addLegend(position = c("bottomleft"),
-            values = df_for_maps$specific_product,
-            pal = sc_color,
-            title = "Purpose"
-  ) %>% 
-  addLayersControl(
-    overlayGroups = as.vector(unique(df_for_maps$group)),
-    options = layersControlOptions(collapsed = FALSE)
-  )
 
 
 
@@ -168,14 +171,13 @@ for (y in unique(df_for_maps$specific_product))
                                            fillColor = map_lay$map_col[1],
                                            icon = map_lay$icon,
                                            clusterId = y) 
+      
     
   }
   
-
+  
   
 }
-
-
 
 #### Demand layers
 
@@ -204,20 +206,20 @@ the_popup = paste0("function(feature) {",
 
 g <- if (demand$demand_id == 1){
   m %>%
-  
-  addEsriFeatureLayer(covid_esri_url,
-                      color = '#000000', 
-                      weight = 0.25 , # thickness of the county outines
-                      opacity = 0.65, # opacity of the county outlines
-                      fillOpacity = 0.65,  # opacity of the county fill
-                      highlightOptions = highlightOptions(weight=2, 
-                                                          fillOpacity=0.8, 
-                                                          bringToFront=TRUE,
-                                                          sendToBack=TRUE),
-                      options = featureLayerOptions(
-                        simplifyFactor = 0.5,
-                        precision = 5,
-                        style = JS("function(feature){
+    
+    addEsriFeatureLayer(covid_esri_url,
+                        color = '#000000', 
+                        weight = 0.25 , # thickness of the county outines
+                        opacity = 0.65, # opacity of the county outlines
+                        fillOpacity = 0.65,  # opacity of the county fill
+                        highlightOptions = highlightOptions(weight=2, 
+                                                            fillOpacity=0.8, 
+                                                            bringToFront=TRUE,
+                                                            sendToBack=TRUE),
+                        options = featureLayerOptions(
+                          simplifyFactor = 0.5,
+                          precision = 5,
+                          style = JS("function(feature){
                           var frate = feature.properties.Confirmed;
                           if(frate <= 0){
                             return {fillColor: '#f0f9e8'};
@@ -231,13 +233,13 @@ g <- if (demand$demand_id == 1){
                             return {fillColor: '#0868ac'};
                           }
                         }")),
-                      
-                      popupProperty = JS(the_popup)) %>%
-  
-  addLegend(title="Confirmed Cases", 
-            colors=c('#0868ac','#43a2ca','#7bccc4','#bae4bc','#f0f9e8'),
-            labels=c("1000+","500-1000", "500-100", "1-100", "0"), 
-            opacity=0.8, position="bottomright")
+                        
+                        popupProperty = JS(the_popup)) %>%
+    
+    addLegend(title="Confirmed Cases", 
+              colors=c('#0868ac','#43a2ca','#7bccc4','#bae4bc','#f0f9e8'),
+              labels=c("1000+","500-1000", "500-100", "1-100", "0"), 
+              opacity=0.8, position="bottomright")
 } else if (demand$demand_id == 2){
   m %>%
     
