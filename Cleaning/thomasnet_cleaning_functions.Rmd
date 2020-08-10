@@ -31,7 +31,15 @@ We now define a series of functions to clean weekly Thomasnet pulls.
 First, we define our directory: 
 
 ```{r}
-dir <- "C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls"
+
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls/"
+
+```
+
+```{r}
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
 ```
 
 Next, we define our functions. 
@@ -73,10 +81,10 @@ read_bind <- function(date) {
   
   file_suffix <- paste(str_replace(date, "\\_", ""), "2020", sep = "")
   
-  fm <- readRDS(paste("C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls/", date, "/thomas_fm_", file_suffix, ".RDS", sep ="")) %>% 
+  fm <- readRDS(paste(box_dir, date, "/thomas_fm_", file_suffix, ".RDS", sep ="")) %>% 
     desc_clean1()
   
-  resp <- readRDS(paste("C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls/", date, "/thomas_resp_", file_suffix, ".RDS", sep ="")) %>% 
+  resp <- readRDS(paste(box_dir, date, "/thomas_resp_", file_suffix, ".RDS", sep ="")) %>% 
     desc_clean1()
   
     df <- bind_rows(resp, fm)
@@ -367,7 +375,7 @@ thomas_test <- clean_endprods("06_05")
 ```{r}
 thomas_files <- list()
 
-file_list <- list.files(dir)
+file_list <- list.files(box_dir)
 
 i <- 1
 
@@ -390,12 +398,14 @@ thomas_endprods <- bind_rows(thomas_files[[1]], thomas_files[[2]]) %>%
   bind_rows(thomas_files[[5]]) %>% 
   bind_rows(thomas_files[[6]]) %>% 
   bind_rows(thomas_files[[7]]) %>% 
-  bind_rows(thomas_files[[8]])
+  bind_rows(thomas_files[[8]]) %>% 
+  bind_rows(thomas_files[[9]]) %>% 
+  bind_rows(thomas_files[[10]]) %>% 
+  bind_rows(thomas_files[[11]])
 ```
 
 ```{r}
-dir1 <- "C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/thomasnet_totals"
-saveRDS(thomas_endprods, paste(dir1, "/thomas_endprods.RDS", sep = ""))
+saveRDS(thomas_endprods, "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/thomasnet_totals/thomas_endprods.RDS")
 ```
 
 # Intermediary Products
@@ -412,7 +422,7 @@ read_nw <- function(date) {
   file_suffix <- paste(str_replace(date, "\\_", ""), "2020", sep = "")
 
   
-  df <- readRDS(paste("C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls/", date, "/nonwoven_", file_suffix, ".RDS", sep ="")) %>% 
+  df <- readRDS(paste(box_dir, date, "/nonwoven_", file_suffix, ".RDS", sep ="")) %>% 
     desc_clean1()
   
     
@@ -424,8 +434,10 @@ read_nw <- function(date) {
 read_lat <- function(date) {
   
   file_suffix <- paste(str_replace(date, "\\_", ""), "2020", sep = "")
+  
 
-  df <- readRDS(paste("C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls/", date, "/nolatex_", file_suffix, ".RDS", sep =""))
+  df <- readRDS(paste(box_dir, date, "/nolatex_", file_suffix, ".RDS", sep =""))
+
   
     
     return(df)
@@ -555,7 +567,7 @@ clean_int <- function(date) {
 ```{r}
 thomas_files <- list()
 
-file_list <- list.files(dir)
+file_list <- list.files(box_dir)
 
 i <- 1
 
@@ -578,11 +590,19 @@ thomas_intprods <- bind_rows(thomas_files[[1]], thomas_files[[2]]) %>%
   bind_rows(thomas_files[[5]]) %>% 
   bind_rows(thomas_files[[6]]) %>% 
   bind_rows(thomas_files[[7]]) %>% 
-  bind_rows(thomas_files[[8]])
+  bind_rows(thomas_files[[8]]) %>% 
+  bind_rows(thomas_files[[9]]) %>% 
+  bind_rows(thomas_files[[10]]) %>% 
+  bind_rows(thomas_files[[11]])
 ```
 
 ```{r}
-saveRDS(thomas_intprods, paste(dir1, "/thomas_intprods.RDS", sep = ""))
+dir1 <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/thomasnet_totals"
+```
+
+
+```{r}
+saveRDS(thomas_intprods, "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/thomasnet_totals/thomas_intprods.RDS")
 ```
 
 ```{r}
@@ -594,10 +614,12 @@ saveRDS(thomas_prods, paste(dir1, "/thomas_allprods.RDS", sep = ""))
 ```
 
 ```{r}
+#set_here(path = "..") 
 saveRDS(thomas_prods, here("Data/Cleaned/thomas_allprods.RDS"))
 ```
 
 ```{r}
+
 saveRDS(thomas_intprods, here("Data/Cleaned/int_prod.RDS"))
 ```
 
