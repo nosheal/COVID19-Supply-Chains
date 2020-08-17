@@ -105,7 +105,7 @@ sup1 <- thomas_struc %>%
   geom_point(shape =21, color = "Black", alpha = 0.7, size = 1 ,position = "stack") +
   scale_fill_manual(values = my_pal) + 
   facet_wrap(~reorder(specific_product, pos)) +
-  labs(title = "Number of Suppliers by Product and Thomasnet Supplier Type", subtitle = "Thomasnet 05/30/20 - 08/03/20", y = "Unique Thomasnet Suppliers", x = "", fill = "Supplier Type") + 
+  labs(title = "Number of Suppliers by Product and Thomasnet Supplier Type", subtitle = "Thomasnet 05/30/20 - 08/17/20", y = "Unique Thomasnet Suppliers", x = "", fill = "Supplier Type") + 
   theme_bw()
 
 sup1
@@ -317,7 +317,8 @@ aff_comps <- thomas_struc %>%
     TRUE ~ useful
   )) %>%
   filter(useful == "Affirmatively") %>% 
-  mutate(company = if_else(company == "Monadnock Paper Mills, Inc.", "Monadnock Non-Wovens LLC", company))
+  mutate(company = if_else(company == "Monadnock Paper Mills, Inc.", "Monadnock Non-Wovens LLC", company),
+         company = if_else(company == "Consolidated Cordage Corporation", "Consolidated Cordage Corp.", company)) 
 ```
 
 ## Importing Data 
@@ -469,7 +470,8 @@ aff_fm <- aff_fm %>%
 ```{r}
 aff_fmresp <- aff_comps %>% 
   filter(specific_product == "Respirators and Face Masks") %>% 
-  left_join(conf_fmresp)
+  left_join(conf_fmresp) %>% 
+    mutate(company = if_else(company == "RPB Safety", "RPB Safety, LLC", company))
 ```
 
 ```{r}
@@ -644,15 +646,41 @@ fig_2 <- base_graph +
 ```
 
 
+```{r}
+base2 <- all_dom %>% 
+  group_by(date, broad_product, specific_product) %>% 
+  count() %>% 
+  ungroup() %>% 
+  mutate(pos = case_when(
+    specific_product == "Respirators and Face Masks" ~ 1, 
+    specific_product == "Face Masks Only" ~ 2, 
+    specific_product == "Respirators Only" ~ 3, 
+    specific_product == "Non-Woven Fabric" ~ 5, 
+    specific_product == "No Latex Elastic" ~ 6,
+    specific_product == "Cloth Masks" ~ 4, 
+  )) %>% 
+  mutate(specific_product = fct_reorder(specific_product, pos)) %>% 
+  ggplot(aes(date, n, fill = specific_product, group = specific_product)) +
+  scale_fill_manual(values = dom_colors) + 
+  facet_wrap(~reorder(specific_product, pos)) +
+  theme_bw()
+```
 
-
+```{r}
+time_conf <- base2 + 
+  geom_area(data = neg_dom, aes(date, n, group = specific_product), position = "stack", fill = "Black") +
+  geom_area(data = poss_dom, aes(date, n, group = specific_product), position = "stack", fill = "Light Grey") + 
+  geom_area(data = aff_dom, aes(date, n, group = specific_product), position = "stack", fill = "Light Blue") + 
+  geom_area(alpha = 0.3, position = "stack", show.legend = FALSE, color = "Black") +
+  labs(title = "Confirmed Domestic Manufacturers (Blue), Unknown Manufacturing Entities (Grey), and \nConfirmed Non-Domestic or Non-manufacturing Entities (Black)", subtitle = "Thomasnet 05/30/20 - 08/17/20 \nManufacturers Self-Identifying as: \nProducing Standard Products for FDA Approved, Hospital Grade Masks", y = "Unique Manufacturing Entities", x = "") 
+```
 
 
 # Geocoding
 
 
 ```{r, echo = FALSE, Include = FALSE}
-api_key <- c("YOUR KEY")
+api_key <- c("your_key")
 ```
 
 We define our function, which will take an address as an input and output a latitude and longitude result. 
@@ -713,7 +741,6 @@ conf_all_maps <- conf_all %>%
    mutate(comp_address = paste(company, address, sep = ", "))
 ```
 
-
 ```{r, include = FALSE}
 for(i in 1:nrow(conf_all_maps))
 {
@@ -745,6 +772,11 @@ conf_all_maps <- conf_all_maps %>%
 conf_all_maps %>% 
   saveRDS(box_here("thomasnet_totals/conf_manfs_geocoded.RDS"))
 ```
+
+```{r}
+conf_all_maps <- readRDS(box_here("thomasnet_totals/conf_manfs_geocoded.RDS"))
+```
+
 
 ```{r}
 conf_all_maps <- conf_all_maps %>%
