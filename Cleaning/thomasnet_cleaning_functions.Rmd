@@ -94,7 +94,7 @@ read_bind <- function(date) {
 ```
 
 ```{r}
-test <- read_bind(date = '07_13')
+test <- read_bind(date = '08_10')
 ```
 
 ### Remove Duplicates and Clean Words
@@ -401,7 +401,8 @@ thomas_endprods <- bind_rows(thomas_files[[1]], thomas_files[[2]]) %>%
   bind_rows(thomas_files[[8]]) %>% 
   bind_rows(thomas_files[[9]]) %>% 
   bind_rows(thomas_files[[10]]) %>% 
-  bind_rows(thomas_files[[11]])
+  bind_rows(thomas_files[[11]]) %>% 
+  bind_rows(thomas_files[[12]])
 ```
 
 ```{r}
@@ -593,7 +594,8 @@ thomas_intprods <- bind_rows(thomas_files[[1]], thomas_files[[2]]) %>%
   bind_rows(thomas_files[[8]]) %>% 
   bind_rows(thomas_files[[9]]) %>% 
   bind_rows(thomas_files[[10]]) %>% 
-  bind_rows(thomas_files[[11]])
+  bind_rows(thomas_files[[11]]) %>% 
+  bind_rows(thomas_files[[12]])
 ```
 
 ```{r}
