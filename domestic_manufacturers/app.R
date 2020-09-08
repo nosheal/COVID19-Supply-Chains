@@ -184,7 +184,7 @@ ui <- fluidPage(
                                                       choices = unique(df_for_maps$company), selected = NULL, multiple = TRUE)
                                 ), 
                                 column(3, 
-                                       "Data from Thomasnet (5/29/20 - 08/17/20). Not all supplier locations are shown.")
+                                       "Data from Thomasnet (5/29/20 - 08/31/20). ")
                             )
                         )
                             
@@ -383,8 +383,7 @@ server <- function(input, output, session) {
     })
         
 
-
-    
+    })
    
 }
 

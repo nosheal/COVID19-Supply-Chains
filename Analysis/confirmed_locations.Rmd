@@ -105,7 +105,7 @@ sup1 <- thomas_struc %>%
   geom_point(shape =21, color = "Black", alpha = 0.7, size = 1 ,position = "stack") +
   scale_fill_manual(values = my_pal) + 
   facet_wrap(~reorder(specific_product, pos)) +
-  labs(title = "Number of Suppliers by Product and Thomasnet Supplier Type", subtitle = "Thomasnet 05/30/20 - 08/17/20", y = "Unique Thomasnet Suppliers", x = "", fill = "Supplier Type") + 
+  labs(title = "Number of Suppliers by Product and Thomasnet Supplier Type", subtitle = "Thomasnet 05/30/20 - 09/08/20", y = "Unique Thomasnet Suppliers", x = "", fill = "Supplier Type") + 
   theme_bw()
 
 sup1
@@ -259,28 +259,32 @@ med_count <- function(data){
 ```
 
 ```{r}
+slice_date <- mdy("09/08/2020")
+```
+
+```{r}
 poss_graph_slice <- poss_count(thomas_struc) %>% 
-  filter(date == mdy("07/13/2020"))  
+  filter(date == slice_date)  
 ```
 
 ```{r}
 tech_graph_slice <- tech_count(thomas_struc) %>% 
-  filter(date == mdy("07/13/2020"))  
+   filter(date == slice_date)   
 ```
 
 ```{r}
 aff_graph_slice <- aff_count(thomas_struc) %>% 
-  filter(date == mdy("07/13/2020"))  
+   filter(date == slice_date) 
 ```
 
 ```{r}
 med_graph_slice <- med_count(thomas_struc) %>% 
-  filter(date == mdy("07/13/2020"))  
+   filter(date == slice_date)  
 ```
 
 ```{r}
 fig_base <- thomas_struc %>% 
-  base_layer("07/13/2020") + 
+  base_layer("09/08/2020") + 
   coord_flip()
 ```
 
@@ -289,6 +293,12 @@ fig_base <- thomas_struc %>%
 my_pal2 <- c("#E6BB00", "#75a626")
 ```
 
+```{r}
+fig_0 <- fig_base + 
+  geom_col(position = "dodge", show.legend = FALSE) +
+  geom_label(aes(label = n), show.legend = FALSE) + 
+  labs(title = "Potential Domestic Manufacturing Entities by Product Type", subtitle = "Source: Thomasnet, 09/08/20.", x = "", y = "Unique Manufacturing Entities")
+```
 
 ```{r}
 fig_1 <- fig_base +
@@ -300,7 +310,7 @@ fig_1 <- fig_base +
   geom_col(data = med_graph_slice, aes(specific_product, n_aff, fill = specific_product), show.legend = FALSE) + 
   scale_fill_manual(values = my_pal2) + 
   geom_text(data = med_graph_slice, aes(label = n_aff), hjust = 1 ) + 
-  labs(title = "Number of Potential Domestic Manufacturing Entities by Product Type", subtitle = "Source: Thomasnet, 07/13/20. Manufacturers Self-Identifying as: \nProducing Standard Products for FDA Approved, Hospital Grade Masks/Respirators", x = "", y = "Unique Manufacturing Entities")
+  labs(title = "Number of Potential Domestic Manufacturing Entities by Product Type", subtitle = "Source: Thomasnet, 09/08/20. Manufacturers Self-Identifying as: \nProducing Standard Products for FDA Approved, Hospital Grade Masks/Respirators", x = "", y = "Unique Manufacturing Entities")
 
 fig_1
 ```
@@ -423,11 +433,20 @@ aff_resp %>%
   view()
 ```
 
+```{r, eval = FALSE}
+aff_resp %>% 
+  filter(is.na(from)) %>% 
+  write_csv(box_here("new_comps.csv"))
+```
+
+
 ```{r}
 aff_resp %>% 
   group_by(specific_product, date) %>% 
   count()
 ```
+
+
 
 ```{r}
 aff_resp <- aff_resp %>% 
@@ -471,7 +490,10 @@ aff_fm <- aff_fm %>%
 aff_fmresp <- aff_comps %>% 
   filter(specific_product == "Respirators and Face Masks") %>% 
   left_join(conf_fmresp) %>% 
-    mutate(company = if_else(company == "RPB Safety", "RPB Safety, LLC", company))
+    mutate(company = if_else(company == "RPB Safety", "RPB Safety, LLC.", company),
+           company = if_else(company == "PZero Inc.", "Pzero Innovations Inc.", company),
+           company = if_else(company == "Rhysley Ltd.", "Rhysley, Ltd.", company),
+           company = if_else(company == "Y-Not Design & Mfg. Inc", "Y-Not Design & Mfg. Inc.", company)) 
 ```
 
 ```{r}
@@ -508,7 +530,11 @@ aff_fmresp <- aff_fmresp %>%
 all_dom <- bind_rows(aff_nl, aff_nw) %>%
   bind_rows(aff_fm) %>% 
   bind_rows(aff_resp) %>% 
-  bind_rows(aff_fmresp)
+  bind_rows(aff_fmresp) %>% 
+  mutate(specific_product = if_else(company %in% c("Safe Health", "Luosh USA, LLC"), "Respirators and Face Masks", specific_product)) %>% 
+  group_by(company, specific_product, date) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1)
 ```
 ```{r}
 all_dom %>% 
@@ -524,7 +550,31 @@ all_dom <- all_dom %>%
   ))
 ```
 
-For each product, for companies that list themselves as affirmatively producing a standard FDA product for surgical grade masks/respirators, we have manually checked every entry. We now build our graphs for analysis. 
+For each product, for companies that list themselves as affirmatively producing a standard FDA product for surgical grade masks/respirators, we have manually checked every entry. We now list our confirmed companies and build our graphs for analysis. 
+
+```{r}
+conf_dom <- all_dom %>% 
+  ungroup() %>% 
+  filter(dom_useful == 1) %>% 
+  select(company, address, facility_size_dbh, desc, specific_product) %>% 
+  group_by(company, specific_product) %>% 
+  mutate(tot = n(), tal = seq(n())) %>% 
+  filter(tal == 1)
+```
+
+
+
+```{r}
+conf_dom %>% 
+  group_by(specific_product) %>% 
+  count() 
+```
+
+```{r}
+write_csv(conf_dom, box_here("confirmed_domestic.csv"))
+```
+
+
 
 ## Zooming in
 
@@ -554,7 +604,7 @@ aff_dom <- all_dom %>%
 
 ```{r}
 aff_dom_slice <- aff_dom %>% 
-  filter(date == mdy("07/13/20"))
+  filter(date == slice_date)  
 ```
 
 ```{r}
@@ -575,7 +625,7 @@ neg_dom <- all_dom %>%
 
 ```{r}
 neg_dom_slice <- neg_dom %>% 
-  filter(date == mdy("07/13/20"))
+  filter(date == slice_date)  
 ```
 
 ```{r}
@@ -597,7 +647,7 @@ poss_dom <- all_dom %>%
 
 ```{r}
 poss_dom_slice <- poss_dom %>% 
-  filter(date == mdy("07/13/20"))
+  filter(date == slice_date)  
 ```
 
 ```{r}
@@ -642,7 +692,7 @@ fig_2 <- base_graph +
   geom_col(data = aff_dom_slice, aes(reorder(specific_product, pos)), fill = "Light Blue", color = "Black") +
   geom_label(data = neg_dom_slice, aes(label = n, fill = reorder(specific_product, pos)), show.legend = FALSE, color = "Black") +
   geom_label(data = aff_dom_slice, aes(label = n), fill = "Light Blue", size = 3, color = "Black", show.legend = FALSE, y = 0) + 
-  labs(x = "", y = "Unique Manufacturing Entities", title = "Confirmed Domestic Manufacturers (Blue), Unknown Manufacturing Entities (Grey), and \nConfirmed Non-Domestic or Non-manufacturing Entities (Black)", subtitle = "Source: Thomasnet, 07/13/20. Manufacturers Self-Identifying as: \nProducing Standard Products for FDA Approved, Hospital Grade Masks", fill = "Specific Product") 
+  labs(x = "", y = "Unique Manufacturing Entities", title = "Confirmed Domestic Manufacturers (Blue), Unknown Manufacturing Entities (Grey), and \nConfirmed Non-Domestic or Non-manufacturing Entities (Black)", subtitle = "Source: Thomasnet, 09/08/20. Manufacturers Self-Identifying as: \nProducing Standard Products for FDA Approved, Hospital Grade Masks", fill = "Specific Product") 
 ```
 
 
@@ -668,11 +718,12 @@ base2 <- all_dom %>%
 
 ```{r}
 time_conf <- base2 + 
-  geom_area(data = neg_dom, aes(date, n, group = specific_product), position = "stack", fill = "Black") +
-  geom_area(data = poss_dom, aes(date, n, group = specific_product), position = "stack", fill = "Light Grey") + 
-  geom_area(data = aff_dom, aes(date, n, group = specific_product), position = "stack", fill = "Light Blue") + 
-  geom_area(alpha = 0.3, position = "stack", show.legend = FALSE, color = "Black") +
-  labs(title = "Confirmed Domestic Manufacturers (Blue), Unknown Manufacturing Entities (Grey), and \nConfirmed Non-Domestic or Non-manufacturing Entities (Black)", subtitle = "Thomasnet 05/30/20 - 08/17/20 \nManufacturers Self-Identifying as: \nProducing Standard Products for FDA Approved, Hospital Grade Masks", y = "Unique Manufacturing Entities", x = "") 
+  geom_area(data = neg_dom, aes(date, n, group = specific_product), position = "stack", fill = "Black", color = "White") +
+  geom_area(data = poss_dom, aes(date, n, group = specific_product), position = "stack", fill = "Light Grey", color = "White") + 
+  geom_area(data = aff_dom, aes(date, n, group = specific_product), position = "stack", fill = "Light Blue", color = "White") + 
+  geom_point(shape = 21, size = 2, position = "stack", show.legend = FALSE, color = "Black") +
+  #geom_point(data = aff_dom, aes(date, n, group = specific_product), position = "stack", shape = 21, size = 2, fill = "Light Blue", color = "Black")+
+  labs(title = "Confirmed Domestic Manufacturers (Blue), Unknown Manufacturing Entities (Grey), and \nConfirmed Non-Domestic or Non-manufacturing Entities (Black)", subtitle = "Thomasnet 05/30/20 - 09/08/20 \nManufacturers Self-Identifying as: \nProducing Standard Products for FDA Approved, Hospital Grade Masks", y = "Unique Manufacturing Entities", x = "") 
 ```
 
 
@@ -680,7 +731,7 @@ time_conf <- base2 +
 
 
 ```{r, echo = FALSE, Include = FALSE}
-api_key <- c("your_key")
+api_key <- c("YOUR_KEY")
 ```
 
 We define our function, which will take an address as an input and output a latitude and longitude result. 
