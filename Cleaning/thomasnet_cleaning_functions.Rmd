@@ -405,7 +405,9 @@ thomas_endprods <- bind_rows(thomas_files[[1]], thomas_files[[2]]) %>%
   bind_rows(thomas_files[[12]]) %>% 
   bind_rows(thomas_files[[13]]) %>% 
   bind_rows(thomas_files[[14]]) %>% 
-  bind_rows(thomas_files[[15]])
+  bind_rows(thomas_files[[15]]) %>% 
+  bind_rows(thomas_files[[16]]) %>% 
+  bind_rows(thomas_files[[17]])
 ```
 
 ```{r}
@@ -601,7 +603,9 @@ thomas_intprods <- bind_rows(thomas_files[[1]], thomas_files[[2]]) %>%
   bind_rows(thomas_files[[12]]) %>% 
   bind_rows(thomas_files[[13]]) %>% 
   bind_rows(thomas_files[[14]]) %>% 
-  bind_rows(thomas_files[[15]])
+  bind_rows(thomas_files[[15]]) %>% 
+  bind_rows(thomas_files[[16]]) %>% 
+  bind_rows(thomas_files[[17]])
 ```
 
 ```{r}
