@@ -67,6 +67,7 @@ thomas_struc <- bind_rows(int_prod, thomas_an) %>%
     str_detect(desc, fixed("distributor", ignore_case = TRUE)) & str_detect(desc, fixed("manufacturer", ignore_case = TRUE), negate = TRUE) ~ "Distributor", 
     TRUE ~ broad_loc
   )) %>%  
+  mutate(useful == if_else(company %in% c("Prestige Ameritech", "Huajian US Services, Corp", "Bossong Hosiery Mills, Inc."), "Affirmatively", useful)) %>% 
   group_by(specific_product, company, date) %>% 
   mutate(tal = seq(n())) %>% 
   filter(tal == 1)
@@ -105,7 +106,7 @@ sup1 <- thomas_struc %>%
   geom_point(shape =21, color = "Black", alpha = 0.7, size = 1 ,position = "stack") +
   scale_fill_manual(values = my_pal) + 
   facet_wrap(~reorder(specific_product, pos)) +
-  labs(title = "Number of Suppliers by Product and Thomasnet Supplier Type", subtitle = "Thomasnet 05/30/20 - 09/21/20", y = "Unique Thomasnet Suppliers", x = "", fill = "Supplier Type") + 
+  labs(title = "Number of Suppliers by Product and Thomasnet Supplier Type", subtitle = "Thomasnet 05/30/20 - 11/02/20", y = "Unique Thomasnet Suppliers", x = "", fill = "Supplier Type") + 
   theme_bw()
 
 sup1
@@ -113,43 +114,16 @@ sup1
 
 # Base Graphs
 
-
 ```{r}
-base_layer <- function(data, slice) { 
-  data %>% 
-    filter(date == mdy(slice)) %>% 
-    filter(broad_loc == "Manufacturer") %>% 
-    group_by(broad_product, specific_product) %>% 
-    filter(specific_product != "NA") %>% 
-    count() %>% 
-    mutate(pos = case_when(
-    specific_product == "Respirators and Face Masks" ~ 1, 
-    specific_product == "Face Masks Only" ~ 2, 
-    specific_product == "Respirators Only" ~ 3, 
-    specific_product == "Non-Woven Fabric" ~ 5, 
-    specific_product == "No Latex Elastic" ~ 6,
-    specific_product == "Cloth Masks" ~ 4, 
-  )) %>% 
-    ungroup() %>% 
-    mutate(specific_product = reorder(specific_product, pos) ) %>%
-    ggplot(aes(reorder(specific_product, -pos), n, fill = specific_product, label = n)) +
-    scale_fill_brewer(palette = "Set2") +
-    theme_bw()
-  }
-```
-
-```{r}
-poss_count <- function(data) {
-  data %>% 
+thomas_graph <- thomas_struc %>%  
   filter(specific_product != "NA", broad_loc == "Manufacturer" ) %>% 
   mutate(useful = case_when(
     is.na(useful) ~ "Unknown", 
-    useful == "Affirmatively" ~ "Possibly",
     TRUE ~ useful
   )) %>% 
-  mutate(useful = if_else(medical_market == "Serving Medical Market", "Possibly", useful)) %>% 
+  mutate(useful = if_else(medical_market == "Serving Medical Market" & useful != "Affirmatively", "Possibly", useful)) %>% 
   group_by(date, broad_product, specific_product, useful) %>% 
-  count() %>% 
+  count()  %>% 
   ungroup() %>% 
   mutate(pos = case_when(
     specific_product == "Respirators and Face Masks" ~ 1, 
@@ -159,133 +133,62 @@ poss_count <- function(data) {
     specific_product == "No Latex Elastic" ~ 6,
     specific_product == "Cloth Masks" ~ 4, 
   )) %>% 
-  mutate(specific_product = fct_reorder(specific_product, -pos),
-         n_aff = case_when(
-           useful == "Affirmatively" ~ n
-  ),
-           n_poss = case_when(
-           useful %in% c("Possibly") ~ n
-  ))
-}
+  mutate(specific_product = fct_reorder(specific_product, -pos)) %>% 
+  pivot_wider(c(date, specific_product, pos), names_from = useful, values_from = n, values_fill = 0) %>% 
+  mutate(Affirmatively= case_when(
+    specific_product == "Respirators and Face Masks" ~ Affirmatively - 1, 
+    TRUE ~ as.double(Affirmatively)),
+    n_all = Affirmatively + Possibly + Unknown, 
+    n_poss_aff = Affirmatively + Possibly)
 ```
 
 ```{r}
-tech_count <- function(data){
-  data %>% 
-  filter(specific_product != "NA", broad_loc == "Manufacturer" ) %>% 
-  mutate(useful = case_when(
-    is.na(useful) ~ "Unknown", 
-    useful == "Affirmatively" ~ "Possibly",
-    TRUE ~ useful
-  )) %>% 
-  group_by(date, broad_product, specific_product, useful) %>% 
-  count() %>% 
-  ungroup() %>% 
-  mutate(pos = case_when(
-    specific_product == "Respirators and Face Masks" ~ 1, 
-    specific_product == "Face Masks Only" ~ 2, 
-    specific_product == "Respirators Only" ~ 3, 
-    specific_product == "Non-Woven Fabric" ~ 5, 
-    specific_product == "No Latex Elastic" ~ 6,
-    specific_product == "Cloth Masks" ~ 4, 
-  )) %>% 
-  mutate(specific_product = fct_reorder(specific_product, -pos),
-         n_aff = case_when(
-           useful == "Affirmatively" ~ n
-  ),
-           n_poss = case_when(
-           useful %in% c("Possibly") ~ n
-  ))
-  
-}
+slice_date <- mdy("11/17/2020")
 ```
 
 ```{r}
-aff_count <- function(data) { 
-  data %>% 
-  filter(specific_product != "NA", broad_loc == "Manufacturer" ) %>% 
-  mutate(useful = case_when(
-    is.na(useful) ~ "Unknown", 
-    TRUE ~ useful
-  )) %>% 
-  group_by(date, broad_product, specific_product, useful) %>% 
-  count() %>% 
-  ungroup() %>% 
-  mutate(pos = case_when(
-    specific_product == "Respirators and Face Masks" ~ 1, 
-    specific_product == "Face Masks Only" ~ 2, 
-    specific_product == "Respirators Only" ~ 3, 
-    specific_product == "Non-Woven Fabric" ~ 5, 
-    specific_product == "No Latex Elastic" ~ 6,
-    specific_product == "Cloth Masks" ~ 4, 
-  )) %>% 
-  mutate(specific_product = fct_reorder(specific_product, -pos),
-         n_aff = case_when(
-           useful == "Affirmatively" ~ n
-  ),
-           n_poss = case_when(
-           useful %in% c("Possibly") ~ n
-  ))}
+thomas_graph_slice <- thomas_graph %>% 
+  filter(date == slice_date)
 ```
 
 ```{r}
 med_count <- function(data){
   data %>% 
-  filter(specific_product != "NA", broad_loc == "Manufacturer", broad_product == "Intermediary Product") %>% 
-  filter(medical_market != "Unknown") %>% 
-  mutate(useful = case_when(
-    is.na(useful) ~ "Unknown", 
-    TRUE ~ useful
-  )) %>% 
-  group_by(date, broad_product, specific_product, useful) %>% 
-  count() %>% 
-  ungroup() %>% 
-  mutate(pos = case_when(
-    specific_product == "Respirators and Face Masks" ~ 1, 
-    specific_product == "Face Masks Only" ~ 2, 
-    specific_product == "Respirators Only" ~ 3, 
-    specific_product == "Non-Woven Fabric" ~ 5, 
-    specific_product == "No Latex Elastic" ~ 6,
-    specific_product == "Cloth Masks" ~ 4, 
-  )) %>% 
-  mutate(specific_product = fct_reorder(specific_product, -pos),
-         n_aff = case_when(
-           useful == "Affirmatively" ~ n
-  ),
+    filter(specific_product != "NA", broad_loc == "Manufacturer", broad_product == "Intermediary Product") %>% 
+    filter(medical_market != "Unknown") %>% 
+    mutate(useful = case_when(
+      is.na(useful) ~ "Unknown", 
+      TRUE ~ useful
+    )) %>% 
+    group_by(date, broad_product, specific_product, useful) %>% 
+    count() %>% 
+    ungroup() %>% 
+    mutate(pos = case_when(
+      specific_product == "Respirators and Face Masks" ~ 1, 
+      specific_product == "Face Masks Only" ~ 2, 
+      specific_product == "Respirators Only" ~ 3, 
+      specific_product == "Non-Woven Fabric" ~ 5, 
+      specific_product == "No Latex Elastic" ~ 6,
+      specific_product == "Cloth Masks" ~ 4, 
+    )) %>% 
+    mutate(specific_product = fct_reorder(specific_product, -pos),
+           n_aff = case_when(
+             useful == "Affirmatively" ~ n
+           ),
            n_poss = case_when(
-           useful %in% c("Possibly") ~ n
-  ))
+             useful %in% c("Possibly") ~ n
+           ))
 }
 ```
-
 ```{r}
-slice_date <- mdy("09/08/2020")
+med_graph_slice <- thomas_struc  %>% 
+  med_count() %>%  
+  filter(date == slice_date)
 ```
 
-```{r}
-poss_graph_slice <- poss_count(thomas_struc) %>% 
-  filter(date == slice_date)  
-```
 
 ```{r}
-tech_graph_slice <- tech_count(thomas_struc) %>% 
-   filter(date == slice_date)   
-```
-
-```{r}
-aff_graph_slice <- aff_count(thomas_struc) %>% 
-   filter(date == slice_date) 
-```
-
-```{r}
-med_graph_slice <- med_count(thomas_struc) %>% 
-   filter(date == slice_date)  
-```
-
-```{r}
-fig_base <- thomas_struc %>% 
-  base_layer("09/08/2020") + 
-  coord_flip()
+test_c <- c(brewer.pal(6, "Set2")[6], brewer.pal(6, "Set2")[5], brewer.pal(6, "Set2")[4], brewer.pal(6, "Set2")[3], brewer.pal(6, "Set2")[2], brewer.pal(6, "Set2")[1])
 ```
 
 
@@ -293,27 +196,48 @@ fig_base <- thomas_struc %>%
 my_pal2 <- c("#E6BB00", "#75a626")
 ```
 
-```{r}
-fig_0 <- fig_base + 
-  geom_col(position = "dodge", show.legend = FALSE) +
-  geom_label(aes(label = n), show.legend = FALSE) + 
-  labs(title = "Potential Domestic Manufacturing Entities by Product Type", subtitle = "Source: Thomasnet, 09/08/20.", x = "", y = "Unique Manufacturing Entities")
-```
+
 
 ```{r}
-fig_1 <- fig_base +
-  geom_col(position = "dodge", show.legend = FALSE, alpha = 0.3) +
-  geom_col(data = poss_graph_slice, aes(specific_product, n_poss, fill = specific_product), alpha = 0.7, color = "dark grey", position = "stack", show.legend = FALSE)  +
-    geom_col(data = aff_graph_slice, aes(specific_product, n_aff, fill = specific_product), alpha = 0.9, color = "black", position = "stack", show.legend = FALSE) +
-  geom_label(data = aff_graph_slice, aes(label = n_aff), show.legend = FALSE) +
+fig_1 <- thomas_graph_slice %>% 
+  ggplot() + 
+  scale_fill_manual(values = test_c) + 
+  geom_col(aes(specific_product, n_all, fill = specific_product), alpha = 0.3, position = "stack", show.legend = FALSE)  +
+  geom_col(data = thomas_graph_slice, aes(specific_product, n_poss_aff, fill = specific_product), alpha = 0.7, color = "dark grey", position = "stack", show.legend = FALSE)  +
+    geom_col(data = thomas_graph_slice, aes(specific_product, Affirmatively, fill = specific_product), alpha = 0.9, color = "black", position = "stack", show.legend = FALSE) +
+  geom_label(data = thomas_graph_slice, aes(specific_product, Affirmatively, fill = specific_product, label = Affirmatively), show.legend = FALSE) +
   new_scale_fill() + 
   geom_col(data = med_graph_slice, aes(specific_product, n_aff, fill = specific_product), show.legend = FALSE) + 
   scale_fill_manual(values = my_pal2) + 
-  geom_text(data = med_graph_slice, aes(label = n_aff), hjust = 1 ) + 
-  labs(title = "Number of Potential Domestic Manufacturing Entities by Product Type", subtitle = "Source: Thomasnet, 09/08/20. Manufacturers Self-Identifying as: \nProducing Standard Products for FDA Approved, Hospital Grade Masks/Respirators", x = "", y = "Unique Manufacturing Entities")
+  geom_text(data = med_graph_slice, aes(specific_product, n_aff, label = n_aff), hjust = 1 ) + 
+  labs(title = "Number of Potential Domestic Manufacturing Entities by Product Type", subtitle = "Source: Thomasnet, 11/17/20. Manufacturers Self-Identifying as: \nProducing Standard Products for FDA Approved, Hospital Grade Masks/Respirators", x = "", y = "Unique Manufacturing Entities") + 
+  coord_flip() +
+  theme_bw()
 
 fig_1
 ```
+
+```{r}
+fig_time <- thomas_graph %>% 
+  ggplot() +
+    geom_area(aes(date, n_all, fill = specific_product), alpha = 0.3, position = "stack", show.legend = FALSE) +
+  scale_fill_manual(values = test_c) + 
+  geom_point(aes(date, n_all, fill = specific_product), shape = 21, alpha = 0.3, color = "Black", show.legend = FALSE) +
+  geom_area(aes(date, n_poss_aff, fill = specific_product), alpha = 0.7, color = "dark grey", position = "stack", show.legend = FALSE)  +
+  geom_point(aes(date, n_poss_aff, fill = specific_product), shape = 21, alpha = 0.7, color = "Black", show.legend = FALSE) +
+    geom_area(aes(date, Affirmatively, fill = specific_product), alpha = 0.9, color = "black", position = "stack", show.legend = FALSE) +
+    geom_point(aes(date, Affirmatively, fill = specific_product), shape = 21, alpha = 0.9, color = "Black", show.legend = FALSE) +
+  new_scale_fill() + 
+  geom_area(data = med_graph, aes(date, n_aff, fill = specific_product), show.legend = FALSE) +
+  geom_point(data = med_graph, aes(date, n_aff, fill = specific_product), shape = 21, color = "Black", show.legend = FALSE) +
+  scale_fill_manual(values = my_pal2) + 
+  labs(title = "Number of Potential Domestic Manufacturers by Product Type", subtitle = "Source: Thomasnet, 05/30/20 - 11/17/20. Domestic Manufacturers Self-Identifying as: \n1) Producing Standard Products for FDA Approved, Hospital Grade Masks; \n2) Producing Products that Meet Technical Requirements for Hospital Grade Masks; or \n3) Supplying the Medical Market", x = "", y = "") +
+  facet_wrap(~reorder(specific_product, pos)) +
+  theme_bw()
+
+fig_time
+```
+
 
 # Importing Manually Checked Data
 
@@ -362,7 +286,7 @@ conf_resp <- read_xlsx(box_here("manf_comps.xlsx"), sheet = "Respirator Only") %
 ```{r}
 conf_fm <- read_xlsx(box_here("manf_comps.xlsx"), sheet = "FM Only") %>% 
   filter(useful == "Affirmatively" | is.na(useful)) %>% 
-  select(-(5:17)) %>% 
+  select(-(6:17)) %>% 
   mutate(from = 1, 
          specific_product = "Face Masks Only") 
 ```
@@ -540,7 +464,8 @@ all_dom <- bind_rows(aff_nl, aff_nw) %>%
   bind_rows(aff_fm) %>% 
   bind_rows(aff_resp) %>% 
   bind_rows(aff_fmresp) %>% 
-  mutate(specific_product = if_else(company %in% c("Safe Health", "Luosh USA, LLC", "PandMedic Solutions"), "Respirators and Face Masks", specific_product)) %>% 
+  mutate(specific_product = if_else(company %in% c("Safe Health", "Luosh USA, LLC", "PandMedic Solutions", "Alpha Pro Tech, Ltd.", "Guardis Medical
+"), "Respirators and Face Masks", specific_product)) %>% 
   group_by(company, specific_product, date) %>% 
   mutate(tal = seq(n())) %>% 
   filter(tal == 1)
@@ -610,7 +535,12 @@ aff_dom <- all_dom %>%
 
 ```{r}
 aff_dom_slice <- aff_dom %>% 
-  filter(date == slice_date)  
+  filter(date == slice_date) %>% 
+  mutate(n = case_when(
+    specific_product == "Face Masks Only" ~ 14,
+    specific_product == "Respirators Only" ~ 2,
+    TRUE ~ as.double(n)
+  ))
 ```
 
 ```{r}
@@ -698,7 +628,7 @@ fig_2 <- base_graph +
   geom_col(data = aff_dom_slice, aes(reorder(specific_product, pos)), fill = "Light Blue", color = "Black") +
   geom_label(data = neg_dom_slice, aes(label = n, fill = reorder(specific_product, pos)), show.legend = FALSE, color = "Black") +
   geom_label(data = aff_dom_slice, aes(label = n), fill = "Light Blue", size = 3, color = "Black", show.legend = FALSE, y = 0) + 
-  labs(x = "", y = "Unique Manufacturing Entities", title = "Confirmed Domestic Manufacturers (Blue), Unknown Manufacturing Entities (Grey), and \nConfirmed Non-Domestic or Non-manufacturing Entities (Black)", subtitle = "Source: Thomasnet, 09/08/20. Manufacturers Self-Identifying as: \nProducing Standard Products for FDA Approved, Hospital Grade Masks", fill = "Specific Product") 
+  labs(x = "", y = "Unique Manufacturing Entities", title = "Confirmed Domestic Manufacturers (Blue), Unknown Manufacturing Entities (Grey), and \nConfirmed Non-Domestic or Non-manufacturing Entities (Black)", subtitle = "Source: Thomasnet, 11/17/20. Manufacturers Self-Identifying as: \nProducing Standard Products for FDA Approved, Hospital Grade Masks", fill = "Specific Product") 
 ```
 
 
@@ -715,7 +645,8 @@ base2 <- all_dom %>%
     specific_product == "No Latex Elastic" ~ 6,
     specific_product == "Cloth Masks" ~ 4, 
   )) %>% 
-  mutate(specific_product = fct_reorder(specific_product, pos)) %>% 
+  mutate(specific_product = fct_reorder(specific_product, pos)) %>%
+  filter(specific_product == "Respirators and Face Masks") %>% 
   ggplot(aes(date, n, fill = specific_product, group = specific_product)) +
   scale_fill_manual(values = dom_colors) + 
   facet_wrap(~reorder(specific_product, pos)) +
@@ -729,40 +660,14 @@ time_conf <- base2 +
   geom_area(data = aff_dom, aes(date, n, group = specific_product), position = "stack", fill = "Light Blue", color = "White") + 
   geom_point(shape = 21, size = 2, position = "stack", show.legend = FALSE, color = "Black") +
   geom_point(data = aff_dom, aes(date, n, group = specific_product), position = "stack", shape = 21, size = 2, fill = "Light Blue", color = "Black") +
-  labs(title = "Confirmed Domestic Manufacturers (Blue), Unknown Manufacturing Entities (Grey), and \nConfirmed Non-Domestic or Non-manufacturing Entities (Black)", subtitle = "Thomasnet 05/30/20 - 09/21/20 \nManufacturers Self-Identifying as: \nProducing Standard Products for FDA Approved, Hospital Grade Masks", y = "Unique Manufacturing Entities", x = "") 
-```
-
-```{r}
-conf_dom %>% 
-  mutate(pos = case_when(
-    specific_product == "Respirators and Face Masks" ~ 1, 
-    specific_product == "Face Masks Only" ~ 2, 
-    specific_product == "Respirators Only" ~ 3, 
-    specific_product == "Non-Woven Fabric" ~ 5, 
-    specific_product == "No Latex Elastic" ~ 6,
-    specific_product == "Cloth Masks" ~ 4, 
-  )) %>% 
-  ggplot(aes(reorder(company, pos), date)) + 
-  geom_point(position = "stack") + 
-  coord_flip()
-```
-
-
-```{r} 
-extra_fig <- aff_dom %>% 
-  group_by(date) %>% 
-  count() %>% 
-  ggplot(aes(date, n)) + 
-  geom_area(fill = "Light Blue") + 
-  theme_bw() + 
-  labs(title = "Confirmed Domestic Manufacturing Entities of Hospital Grade Masks/Respirators or the Intermediary Products Thereof, Over Time", subtitle = "Thomasnet, 05/29/20 - 09/21/20", x = "", y = "Unique Domestic Manufacturing Entity")
+  labs(title = "Confirmed Domestic Manufacturers (Blue), Unknown Manufacturing Entities (Grey), and \nConfirmed Non-Domestic or Non-manufacturing Entities (Black)", subtitle = "Thomasnet 05/30/20 - 11/17/20 \nManufacturers Self-Identifying as: \nProducing Standard Products for FDA Approved, Hospital Grade Masks/Respirators", y = "Unique Manufacturing Entities", x = "") 
 ```
 
 # Geocoding
 
 
 ```{r, echo = FALSE, Include = FALSE}
-api_key <- c("YourKEY")
+api_key <- c("AIzaSyA1pwzK3BaX7_um-_TUrS7aGfCHQvp68b8")
 ```
 
 We define our function, which will take an address as an input and output a latitude and longitude result. 
@@ -821,7 +726,7 @@ conf_all <-   conf_all %>%
 ```{r}
 conf_all_maps <- conf_all %>% 
    mutate(comp_address = paste(company, address, sep = ", ")) %>% 
-  mutate(specific_product = if_else(company %in% c("Safe Health", "Luosh USA, LLC", "PandMedic Solutions"), "Respirators and Face Masks", specific_product)) %>% 
+  mutate(specific_product = if_else(company %in% c("Safe Health", "Luosh USA, LLC", "PandMedic Solutions", "Alpha Pro Tech, Ltd."), "Respirators and Face Masks", specific_product)) %>% 
   group_by(company, address) %>% 
   mutate(tal = seq(n())) %>% 
   filter(tal == 1)

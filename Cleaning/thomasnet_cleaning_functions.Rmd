@@ -46,9 +46,17 @@ Next, we define our functions.
 
 ### Read Data and Bind Respirators and Face Masks Together
 
+
 ```{r}
 desc_clean1 <- function(data){
   desc_dup <- data %>% 
+     mutate(company = if_else(company == "RPB Safety", "RPB Safety, LLC.", company),
+           company = if_else(company == "PZero Inc.", "PZero Innovations Inc.", company),
+           company = if_else(company == "Pzero Innovations Inc.", "PZero Innovations Inc.", company),
+           company = if_else(company == "Rhysley Ltd.", "Rhysley, Ltd.", company),
+           company = if_else(company == "Y-Not Design & Mfg. Inc", "Y-Not Design & Mfg. Inc.", company), 
+           company = if_else(company == "Lynktrac Technologies, LLC", "LynkTrac Technologies, LLC", company),
+           company = if_else(company == "Cura, a Division of CustomFab USA", "Ceemly, a Division of CustomFab USA", company)) %>%
     group_by(company, location, loc_desc) %>% 
     mutate(count = n())  %>% 
     filter(count >= 2) %>%
@@ -228,7 +236,8 @@ prod_struc <- function(data) {
     face_mask == "Face Mask" & is.na(resp) ~ "Face Masks Only", 
     resp == "Respirator" & face_mask == "Face Mask" ~ "Respirators and Face Masks", 
     cloth_mask == "Cloth Mask" ~ "Cloth Masks"), 
-    specific_product = if_else(      str_detect(company, "Chicago Embroidery Co."), "Cloth Masks", specific_product))
+    specific_product = if_else(str_detect(company, "Chicago Embroidery Co."), "Cloth Masks", specific_product)) %>% 
+    mutate(specific_product = if_else(company %in% c("Safe Health", "Luosh USA, LLC", "PandMedic Solutions"), "Respirators and Face Masks", specific_product))
   }
 ```
 
@@ -407,7 +416,19 @@ thomas_endprods <- bind_rows(thomas_files[[1]], thomas_files[[2]]) %>%
   bind_rows(thomas_files[[14]]) %>% 
   bind_rows(thomas_files[[15]]) %>% 
   bind_rows(thomas_files[[16]]) %>% 
-  bind_rows(thomas_files[[17]])
+  bind_rows(thomas_files[[17]]) %>% 
+  bind_rows(thomas_files[[18]]) %>% 
+  bind_rows(thomas_files[[19]]) %>% 
+  bind_rows(thomas_files[[20]]) %>% 
+  bind_rows(thomas_files[[21]]) %>% 
+  bind_rows(thomas_files[[22]]) %>% 
+  bind_rows(thomas_files[[23]]) %>% 
+  bind_rows(thomas_files[[24]]) %>% 
+  bind_rows(thomas_files[[25]]) %>% 
+  bind_rows(thomas_files[[26]]) %>% 
+  bind_rows(thomas_files[[27]]) %>% 
+  bind_rows(thomas_files[[28]])
+
 ```
 
 ```{r}
@@ -605,7 +626,19 @@ thomas_intprods <- bind_rows(thomas_files[[1]], thomas_files[[2]]) %>%
   bind_rows(thomas_files[[14]]) %>% 
   bind_rows(thomas_files[[15]]) %>% 
   bind_rows(thomas_files[[16]]) %>% 
-  bind_rows(thomas_files[[17]])
+  bind_rows(thomas_files[[17]]) %>% 
+  bind_rows(thomas_files[[18]]) %>% 
+  bind_rows(thomas_files[[19]]) %>% 
+  bind_rows(thomas_files[[20]]) %>% 
+  bind_rows(thomas_files[[21]]) %>% 
+  bind_rows(thomas_files[[22]]) %>% 
+  bind_rows(thomas_files[[23]]) %>% 
+  bind_rows(thomas_files[[24]]) %>% 
+  bind_rows(thomas_files[[25]]) %>% 
+  bind_rows(thomas_files[[26]]) %>% 
+  bind_rows(thomas_files[[27]]) %>% 
+  bind_rows(thomas_files[[28]])
+
 ```
 
 ```{r}

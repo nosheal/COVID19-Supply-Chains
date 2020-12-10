@@ -184,7 +184,7 @@ ui <- fluidPage(
                                                       choices = unique(df_for_maps$company), selected = NULL, multiple = TRUE)
                                 ), 
                                 column(3, 
-                                       "Data from Thomasnet (5/29/20 - 09/21/20). ")
+                                       "Data from Thomasnet (5/29/20 - 11/17/20). ")
                             )
                         )
                             
