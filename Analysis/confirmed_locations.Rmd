@@ -181,6 +181,9 @@ med_count <- function(data){
 }
 ```
 ```{r}
+med_graph <- thomas_struc %>% 
+  med_count()
+
 med_graph_slice <- thomas_struc  %>% 
   med_count() %>%  
   filter(date == slice_date)
@@ -278,7 +281,7 @@ conf_nw <- read_xlsx(box_here("manf_comps.xlsx"), sheet = "Non Woven") %>%
 ```{r}
 conf_resp <- read_xlsx(box_here("manf_comps.xlsx"), sheet = "Respirator Only") %>% 
   filter(useful == "Affirmatively" | is.na(useful)) %>% 
-  select(-(5:17)) %>% 
+  select(-(6:18)) %>% 
   mutate(from = 1, 
          specific_product = "Respirators Only") 
 ```
@@ -286,7 +289,7 @@ conf_resp <- read_xlsx(box_here("manf_comps.xlsx"), sheet = "Respirator Only") %
 ```{r}
 conf_fm <- read_xlsx(box_here("manf_comps.xlsx"), sheet = "FM Only") %>% 
   filter(useful == "Affirmatively" | is.na(useful)) %>% 
-  select(-(6:17)) %>% 
+  select(-(6:18)) %>% 
   mutate(from = 1, 
          specific_product = "Face Masks Only") 
 ```
@@ -465,7 +468,8 @@ all_dom <- bind_rows(aff_nl, aff_nw) %>%
   bind_rows(aff_resp) %>% 
   bind_rows(aff_fmresp) %>% 
   mutate(specific_product = if_else(company %in% c("Safe Health", "Luosh USA, LLC", "PandMedic Solutions", "Alpha Pro Tech, Ltd.", "Guardis Medical
-"), "Respirators and Face Masks", specific_product)) %>% 
+"), "Respirators and Face Masks", specific_product),
+specific_product = if_else(company %in% c("United States Mask"), "Respirators Only", specific_product)) %>% 
   group_by(company, specific_product, date) %>% 
   mutate(tal = seq(n())) %>% 
   filter(tal == 1)
@@ -490,7 +494,7 @@ For each product, for companies that list themselves as affirmatively producing 
 conf_dom <- all_dom %>% 
   ungroup() %>% 
   filter(dom_useful == 1) %>% 
-  select(company, address, facility_size_dbh, desc, specific_product, date, specific_product, sales, employees, date_founded, manf_loc, corporate_family_dbh, comp_type_dbh, all_site_emp_dbh, sales_dbh) %>%
+  select(company, address, facility_size_dbh, desc, specific_product, date, specific_product, sales, employees, date_founded, manf_loc, corporate_family_dbh, comp_type_dbh, all_site_emp_dbh, sales_dbh, FLAG) %>%
   group_by(company) %>% 
   mutate(min_date = min(ymd(date)),
          max_date = max(ymd(date))) %>% 
@@ -726,7 +730,9 @@ conf_all <-   conf_all %>%
 ```{r}
 conf_all_maps <- conf_all %>% 
    mutate(comp_address = paste(company, address, sep = ", ")) %>% 
-  mutate(specific_product = if_else(company %in% c("Safe Health", "Luosh USA, LLC", "PandMedic Solutions", "Alpha Pro Tech, Ltd."), "Respirators and Face Masks", specific_product)) %>% 
+  mutate(specific_product = if_else(company %in% c("Safe Health", "Luosh USA, LLC", "PandMedic Solutions", "Alpha Pro Tech, Ltd.", "Guardis Medical
+"), "Respirators and Face Masks", specific_product),
+specific_product = if_else(company %in% c("United States Mask"), "Respirators Only", specific_product)) %>% 
   group_by(company, address) %>% 
   mutate(tal = seq(n())) %>% 
   filter(tal == 1)

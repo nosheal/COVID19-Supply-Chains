@@ -399,36 +399,15 @@ for (file in 1:length(file_list)) {
   i <- i+1
 }
 ```
-
 ```{r}
-thomas_endprods <- bind_rows(thomas_files[[1]], thomas_files[[2]]) %>% 
-  bind_rows(thomas_files[[3]]) %>% 
-  bind_rows(thomas_files[[4]]) %>% 
-  bind_rows(thomas_files[[5]]) %>% 
-  bind_rows(thomas_files[[6]]) %>% 
-  bind_rows(thomas_files[[7]]) %>% 
-  bind_rows(thomas_files[[8]]) %>% 
-  bind_rows(thomas_files[[9]]) %>% 
-  bind_rows(thomas_files[[10]]) %>% 
-  bind_rows(thomas_files[[11]]) %>% 
-  bind_rows(thomas_files[[12]]) %>% 
-  bind_rows(thomas_files[[13]]) %>% 
-  bind_rows(thomas_files[[14]]) %>% 
-  bind_rows(thomas_files[[15]]) %>% 
-  bind_rows(thomas_files[[16]]) %>% 
-  bind_rows(thomas_files[[17]]) %>% 
-  bind_rows(thomas_files[[18]]) %>% 
-  bind_rows(thomas_files[[19]]) %>% 
-  bind_rows(thomas_files[[20]]) %>% 
-  bind_rows(thomas_files[[21]]) %>% 
-  bind_rows(thomas_files[[22]]) %>% 
-  bind_rows(thomas_files[[23]]) %>% 
-  bind_rows(thomas_files[[24]]) %>% 
-  bind_rows(thomas_files[[25]]) %>% 
-  bind_rows(thomas_files[[26]]) %>% 
-  bind_rows(thomas_files[[27]]) %>% 
-  bind_rows(thomas_files[[28]])
+thomas_endprods <- bind_rows(thomas_files[[1]], thomas_files[[2]])
 
+for (i in 3:length(thomas_files)) {
+  
+  thomas_endprods <- bind_rows(thomas_endprods, thomas_files[[i]])
+  
+  i <- i+1
+}
 ```
 
 ```{r}
@@ -609,36 +588,15 @@ for (file in 1:length(file_list)) {
   i <- i+1
 }
 ```
-
 ```{r}
-thomas_intprods <- bind_rows(thomas_files[[1]], thomas_files[[2]]) %>% 
-  bind_rows(thomas_files[[3]]) %>% 
-  bind_rows(thomas_files[[4]]) %>% 
-  bind_rows(thomas_files[[5]]) %>% 
-  bind_rows(thomas_files[[6]]) %>% 
-  bind_rows(thomas_files[[7]]) %>% 
-  bind_rows(thomas_files[[8]]) %>% 
-  bind_rows(thomas_files[[9]]) %>% 
-  bind_rows(thomas_files[[10]]) %>% 
-  bind_rows(thomas_files[[11]]) %>% 
-  bind_rows(thomas_files[[12]]) %>% 
-  bind_rows(thomas_files[[13]]) %>% 
-  bind_rows(thomas_files[[14]]) %>% 
-  bind_rows(thomas_files[[15]]) %>% 
-  bind_rows(thomas_files[[16]]) %>% 
-  bind_rows(thomas_files[[17]]) %>% 
-  bind_rows(thomas_files[[18]]) %>% 
-  bind_rows(thomas_files[[19]]) %>% 
-  bind_rows(thomas_files[[20]]) %>% 
-  bind_rows(thomas_files[[21]]) %>% 
-  bind_rows(thomas_files[[22]]) %>% 
-  bind_rows(thomas_files[[23]]) %>% 
-  bind_rows(thomas_files[[24]]) %>% 
-  bind_rows(thomas_files[[25]]) %>% 
-  bind_rows(thomas_files[[26]]) %>% 
-  bind_rows(thomas_files[[27]]) %>% 
-  bind_rows(thomas_files[[28]])
+thomas_intprods <- bind_rows(thomas_files[[1]], thomas_files[[2]])
 
+for (i in 3:length(thomas_files)) {
+  
+  thomas_intprods <- bind_rows(thomas_intprods, thomas_files[[i]])
+  
+  i <- i+1
+}
 ```
 
 ```{r}
