@@ -87,7 +87,7 @@ desc_clean1 <- function(data){
 read_bind <- function(date) {
   
   
-  file_suffix <- paste(str_replace(date, "\\_", ""), "2020", sep = "")
+  file_suffix <- str_replace_all(date, "\\_", "")
   
   fm <- readRDS(paste(box_dir, date, "/thomas_fm_", file_suffix, ".RDS", sep ="")) %>% 
     desc_clean1()
@@ -102,7 +102,7 @@ read_bind <- function(date) {
 ```
 
 ```{r}
-test <- read_bind(date = '08_10')
+test <- read_bind(date = '08_10_2020')
 ```
 
 ### Remove Duplicates and Clean Words
@@ -359,7 +359,7 @@ clean_endprods <- function(date){
   
   raw <- read_bind(date)
   
-  file_suffix <- paste(str_replace(date, "\\_", ""), "2020", sep = "")
+  file_suffix <- str_replace_all(date, "\\_", "")
   
   raw %>% 
     remove_dups() %>% 
@@ -375,7 +375,7 @@ clean_endprods <- function(date){
 ```
 
 ```{r}
-thomas_test <- clean_endprods("06_05")
+thomas_test <- clean_endprods("06_05_2020")
 ```
 
 
@@ -425,7 +425,7 @@ We define our functions for our intermediary data
 ```{r}
 read_nw <- function(date) {
   
-  file_suffix <- paste(str_replace(date, "\\_", ""), "2020", sep = "")
+  file_suffix <- str_replace_all(date, "\\_", "")
 
   
   df <- readRDS(paste(box_dir, date, "/nonwoven_", file_suffix, ".RDS", sep ="")) %>% 
@@ -439,7 +439,7 @@ read_nw <- function(date) {
 ```{r}
 read_lat <- function(date) {
   
-  file_suffix <- paste(str_replace(date, "\\_", ""), "2020", sep = "")
+  file_suffix <- str_replace_all(date, "\\_", "")
   
 
   df <- readRDS(paste(box_dir, date, "/nolatex_", file_suffix, ".RDS", sep =""))
@@ -541,7 +541,7 @@ fda_specs_lat <- function(data) {
 ```{r}
 clean_int <- function(date) {
   
-  file_suffix <- paste(str_replace(date, "\\_", ""), "2020", sep = "")
+  file_suffix <- str_replace_all(date, "\\_", "")
   
   nw <- read_nw(date) %>% 
     fda_specs_nw()

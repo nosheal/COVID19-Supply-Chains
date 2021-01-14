@@ -469,7 +469,8 @@ all_dom <- bind_rows(aff_nl, aff_nw) %>%
   bind_rows(aff_fmresp) %>% 
   mutate(specific_product = if_else(company %in% c("Safe Health", "Luosh USA, LLC", "PandMedic Solutions", "Alpha Pro Tech, Ltd.", "Guardis Medical
 "), "Respirators and Face Masks", specific_product),
-specific_product = if_else(company %in% c("United States Mask"), "Respirators Only", specific_product)) %>% 
+specific_product = if_else(company %in% c("United States Mask"), "Respirators Only", specific_product),
+specific_product = if_else(company %in% c("Guardis Medical", "Hero Life Sciences, Inc."), "Face Masks Only", specific_product)) %>% 
   group_by(company, specific_product, date) %>% 
   mutate(tal = seq(n())) %>% 
   filter(tal == 1)
@@ -730,9 +731,10 @@ conf_all <-   conf_all %>%
 ```{r}
 conf_all_maps <- conf_all %>% 
    mutate(comp_address = paste(company, address, sep = ", ")) %>% 
-  mutate(specific_product = if_else(company %in% c("Safe Health", "Luosh USA, LLC", "PandMedic Solutions", "Alpha Pro Tech, Ltd.", "Guardis Medical
+   mutate(specific_product = if_else(company %in% c("Safe Health", "Luosh USA, LLC", "PandMedic Solutions", "Alpha Pro Tech, Ltd.", "Guardis Medical
 "), "Respirators and Face Masks", specific_product),
-specific_product = if_else(company %in% c("United States Mask"), "Respirators Only", specific_product)) %>% 
+specific_product = if_else(company %in% c("United States Mask"), "Respirators Only", specific_product),
+specific_product = if_else(company %in% c("Guardis Medical", "Hero Life Sciences, Inc."), "Face Masks Only", specific_product))  %>% 
   group_by(company, address) %>% 
   mutate(tal = seq(n())) %>% 
   filter(tal == 1)

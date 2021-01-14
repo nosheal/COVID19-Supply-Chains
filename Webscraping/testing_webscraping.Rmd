@@ -1,0 +1,811 @@
+---
+title: "Thomasnet Webscraping - Testing"
+author: "Nikhil Kalathil"
+date: "5/27/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document will contain a program to webscrap and format Thomasnet search data. The results of this program are not complete and require additional cleaning/manual data entry, but this program should solve the problem of needing to download large Thomasnet searches. 
+
+
+```{r, include = FALSE}
+library(tidyverse)
+library(rvest)
+library(rebus)
+library(lubridate)
+library(here)
+```
+
+```{r}
+
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Tests/Thomasnet Pulls/01_11_2021"
+
+```
+
+```{r}
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+```
+
+# Define Our Functions
+
+## Number of Pages
+
+```{r}
+get_pages <- function(html){
+  pages <- html %>% 
+    html_nodes(".page-item") %>% 
+    html_text()
+  
+  pages[(length(pages)-1)] %>% 
+    unname() %>% 
+    as.numeric()
+}
+```
+
+
+## Get Information 
+
+There are a few key components for each entry we are interested in: 
+
+* Company Name
+* Verification 
+* Location
+* Supplier Data 
+* Body Text
+
+The way that the data are stored on the website means that we will seperately grab company information, verification (which will repeat company name), body text, while our location/supplier data will be joined together. We will worry about cleaning these later. 
+
+We are going to define a seperate function for each of these components. 
+
+```{r}
+get_name <- function(html){ 
+  
+  html %>%
+    html_nodes(".profile-card__title") %>% 
+    html_text() %>% 
+    unlist()
+    
+}
+
+get_verification <- function(html){ 
+  
+  html %>% 
+    html_nodes(".profile-card__header") %>% 
+    html_text() %>% 
+    str_replace_all("\n", " ") %>% 
+    str_replace_all(" Save  Select    ", "") %>% 
+    str_replace_all("Path", "_") %>% 
+    unlist()
+  
+}
+
+get_data <- function(html){
+  
+  html %>% 
+    html_nodes(".profile-card__supplier-data") %>%
+    html_text() %>% 
+    str_replace_all("\n", "_") %>% 
+    str_replace_all("        ico-map    ", "")
+}
+
+get_text <- function(html){
+
+html %>% 
+  html_nodes(".profile-card__content") %>% 
+  html_text() %>% 
+  str_replace_all("\n", " ") %>% 
+  str_trim()
+}
+```
+
+
+We now need to turn each of these entries into a data frame. We define a function for this as well: 
+
+```{r}
+make_table <- function(html){
+  
+  name <- get_name(html)
+  verif <- get_verification(html)
+  supplier_data <- get_data(html)
+  text <- get_text(html)
+  
+  combined_data <- tibble(company = name,
+                          verification = verif,
+                          supplier_info = supplier_data,
+                          desc = text)
+}
+```
+
+## Clean Data 
+
+```{r}
+make_table_clean <- function(html){
+  make_table(html) %>% 
+    mutate(verification = str_replace(verification, company, "")) %>% 
+  separate(verification, into = c("thomas_ver", "covid_19"), sep="_(?=[^_]+$)") %>%
+    separate(supplier_info, into = c("loc_type", "var1", "var2", "var3"), sep = "_")
+}
+```
+
+## Get Data
+
+```{r}
+get_thomas_data <- function(url, broad_prod, specific_product){ 
+  html <- read_html(url)
+  
+  make_table_clean(html) %>% 
+    mutate(broad_product = broad_prod, 
+           specific_product = specific_product)}
+```
+
+## Get Data for Multiple Pages
+
+Because the url string differs for the immediate search results and each subsequent page, we are going to define two different functions that we can use. 
+
+If we only have one page, we can just use the `get_thomas_data` function. 
+
+The second will be used if we have a multi-page search result. 
+
+```{r}
+get_thomas_data_plus <- function(top_url, page_url, brd_prod, spec_prod){ 
+  
+  #Read Main Page 
+  
+  first_page <- read_html(top_url)
+  
+  #Get Page Numbers
+  
+  total_pages <- get_pages(first_page)
+  
+  list_of_pages <- str_c(page_url, "pg=", 1:total_pages)
+  
+   # Apply the extraction and bind the individual results back into one table
+  
+  list_of_pages %>% 
+    # Apply to all URLs
+    map(get_thomas_data, brd_prod, spec_prod) %>% 
+    bind_rows()
+  }
+```
+
+## Clean Scraped Data
+
+```{r}
+clean_scraped1 <- function(data) {
+  data %>% 
+    mutate(loc_type = str_replace(loc_type, "ico-map Locations", "Multiple Locs, NA"),
+         loc_type = str_replace(loc_type, "Custom Manufacturer", "CustomManufacturer"),
+         loc_type = str_replace(loc_type, "Finishing Service Company", "FinishingServiceCompany"),
+         loc_type = str_replace(loc_type, "Service Company", "ServiceCompany"), 
+         loc_type = str_replace(loc_type, "Turnkey Systems Integrator", "TurnkeySystemsIntegrator"), 
+         loc_type = str_replace(loc_type, "Manufacturers' Rep", "ManfacturersRep"), 
+         loc_type = str_replace(loc_type, "City of", "CityOf"),
+         loc_type = str_replace(loc_type, "City Of", "CityOf")) %>% 
+  separate(loc_type, into = c("town", "state", "type1", "type2", "type3", "type4", "type5", "type6"), sep = " ") %>% 
+  mutate(town = case_when(
+    str_length(state) > 2 ~ paste(town, state, sep = " "), 
+    TRUE ~ town),
+    state = case_when(
+      str_length(type1) == 2 ~ type1, 
+      TRUE ~ state
+    )) %>% 
+  select(-type1) %>% 
+  unite(col = "location", c("town", "state"), sep = " ") %>% 
+  mutate(location = str_replace(location, "CityOf", "City of")) %>% 
+  unite(col = "loc_desc", c("type2", "type3", "type4", "type5", "type6"), sep = " ") %>% 
+  mutate(loc_desc = str_replace_all(loc_desc, "NA", ""),
+         loc_desc = str_replace(loc_desc, "CustomManufacturer", "Custom Manufacturer"),
+         loc_desc = str_replace(loc_desc, "FinishingServiceCompany", "Finishing Service Company"),
+         loc_desc = str_replace(loc_desc, "ServiceCompany", "Service Company"), 
+         loc_desc = str_replace(loc_desc, "TurnkeySystemsIntegrator", "Turnkey Systems Integrator"), 
+         loc_desc = str_replace(loc_desc, "ManfacturersRep", "Manufacturers' Rep"))
+}
+```
+
+```{r}
+clean_scraped2 <- function(data) { 
+  data %>% 
+  mutate(sales = case_when(
+    str_detect(var1, "\\$") ~ var1, 
+    str_detect(var2, "\\$") ~ var2, 
+    str_detect(var3, "\\$") ~ var3
+  )) %>% 
+  mutate(employees = case_when(
+    !str_detect(var1, "\\$") & str_detect(var1, "\\-") ~ var1, 
+    !str_detect(var2, "\\$") & str_detect(var2, "\\-") ~ var2, 
+    !str_detect(var3, "\\$") & str_detect(var3, "\\-") ~ var3)) %>% 
+  mutate(date_founded = case_when(
+    str_length(str_trim(var1)) == 4 ~ str_trim(var1),
+    str_length(str_trim(var2)) == 4 ~ str_trim(var2), 
+    str_length(str_trim(var3)) == 4 ~ str_trim(var3)
+  )) %>% 
+  select(-c("var1", "var2", "var3"))
+  }
+```
+
+# Webscrape
+
+We define test kits as our end product and swabs, viral transport medium, reagents, and nucleotides as our Intermediary Product. 
+
+## End product: 
+
+### Covid Test Kits
+
+Step 1: Set up URLS
+
+```{r}
+covid_test_kits_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=97012798&searchsource=suppliers&searchterm=covid+test&what=COVID-19+Test+Kits"
+```
+
+```{r}
+covid_test_kits_pages <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=97012798&searchsource=suppliers&searchterm=covid+test&what=COVID-19+Test+Kits&"
+```
+
+Step 2: Run Scrape
+
+```{r}
+covid_tk_raw <- get_thomas_data_plus(covid_test_kits_main, covid_test_kits_pages, "End Product", "Covid-19 Test Kits")
+```
+Step 3: Clean Data
+
+```{r}
+covid_tk <- clean_scraped1(covid_tk_raw) %>% 
+  clean_scraped2
+```
+Step 4: Save
+
+```{r}
+saveRDS(covid_tk, box_here("/covid_tk_01112021.RDS"))
+```
+
+### Other Test Kits
+
+Step 1: Set up URLS
+
+```{r}
+serological_test_kits_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=50455906&typed_term=serolo&searchterm=serolo&what=Bacteriological%2C+Serological%2C+Stool+Blood%2C+Urine+Test+Strip+%26+Virological+Medical+Diagnostic+Kits&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+```{r}
+serological_test_kits_pages <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=50455906&searchsource=suppliers&searchterm=serolo&what=Bacteriological%2C+Serological%2C+Stool+Blood%2C+Urine+Test+Strip+%26+Virological+Medical+Diagnostic+Kits&"
+```
+
+Step 2: Run Scrape
+
+```{r}
+sero_tk_raw <- get_thomas_data_plus(serological_test_kits_main, serological_test_kits_pages, "End Product", "Other Test Kits")
+```
+Step 3: Clean Data
+
+```{r}
+sero_tk <- clean_scraped1(sero_tk_raw) %>% 
+  clean_scraped2()
+```
+
+Step 4: Save Data
+
+```{r}
+saveRDS(sero_tk, box_here("/sero_tk_01112021.RDS"))
+```
+
+
+```{r}
+test_end <- bind_rows(covid_tk, sero_tk) %>% 
+  saveRDS(box_here("/test_end_01112021.RDS"))
+```
+
+
+## Intermediary Product: 
+
+### Oropharyngeal Flocked Swabs
+
+Step 1: Set up URLS
+
+```{r}
+oro_swabs_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=97012641&typed_term=orop&searchterm=orop&what=Oropharyngeal+Flocked+Specimen+Swabs&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+Step 2: Scrape Data
+
+```{r}
+oro_swabs_raw <- get_thomas_data(oro_swabs_main, "Intermediary Product", "Oropharyngeal Swabs")
+```
+
+Step 3: Clean Data
+
+```{r}
+oro_swabs <- clean_scraped1(oro_swabs_raw) %>% 
+  clean_scraped2()
+```
+
+Step 4: Save Data
+
+```{r}
+saveRDS(oro_swabs, box_here("/oro_swabs_01112021.RDS"))
+```
+
+### Nasopharyngeal Flocked Swabs
+
+Step 1: Set up url
+
+```{r}
+naso_swabs_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=97012640&typed_term=naso&searchterm=naso&what=Nasopharyngeal+Flocked+Specimen+Swabs&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+Step 2: Scrape Data
+
+```{r}
+naso_swabs_raw <- get_thomas_data(naso_swabs_main, "Intermediary Product", "Nasopharyngeal Swabs")
+```
+
+Step 3: Clean Data
+
+```{r}
+naso_swabs <- clean_scraped1(naso_swabs_raw) %>% 
+  clean_scraped2()
+```
+
+
+Step 4: Save Data
+
+```{r}
+saveRDS(naso_swabs, box_here("/naso_swabs_01112021.RDS"))
+```
+
+### Viral Transport Medium (VTM)
+
+Step 1: Set up URL
+
+```{r}
+vtm_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=97010418&typed_term=viral+t&searchterm=viral+t&what=Viral+Transport+Medium+%28VTM%29&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+Step 2: Scrape Data
+
+```{r}
+vtm_raw <- get_thomas_data(vtm_main, "Intermediary Product", "Viral Transport Medium (VTM)")
+```
+
+Step 3: Clean Data
+
+```{r}
+vtm <- clean_scraped1(vtm_raw) %>% 
+  clean_scraped2()
+```
+
+
+Step 4: Save Data
+
+```{r}
+saveRDS(vtm, box_here("/vtm_01112021.RDS"))
+```
+
+
+### Plastics Contract Manufacturing 
+
+Step 1: Set up URL
+
+```{r}
+pcm_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=17980004&typed_term=contract+manufactured+plastic&searchterm=contract+manufactured+plastic&what=Plastics+Contract+Manufacturing&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+```{r}
+pcm_pages <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=17980004&searchsource=suppliers&searchterm=contract+manufactured+plastic&what=Plastics+Contract+Manufacturing&"
+```
+
+Step 2: Scrape Data
+
+```{r}
+pcm_raw <- get_thomas_data_plus(pcm_main, pcm_pages, "Intermediary Product", "Plastics Contract Manufacturing")
+```
+
+Step 3: Clean Data
+
+```{r}
+pcm <- clean_scraped1(pcm_raw) %>% 
+  clean_scraped2()
+```
+
+Step 4: Save Data
+
+```{r}
+saveRDS(pcm, box_here("/pcm_01112021.RDS"))
+```
+
+```{r}
+pcm_medical <- pcm %>% 
+  filter(str_detect(desc, "medical"))
+```
+
+```{r}
+saveRDS(pcm_medical, box_here("/pcm_medical_01112021.RDS"))
+```
+
+
+### RNA Extraction Machines 
+
+Step 1: Set up URL
+```{r}
+rna_mach <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=97010388&typed_term=rna+&searchterm=rna+&what=RNA+Extraction+Kits&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+Step 2: Scrape Data
+
+```{r}
+rna_ext_raw <- get_thomas_data(rna_mach, "Intermediary Product", "RNA Extraction Machine")
+```
+
+Step 3: Clean Data
+
+```{r}
+rna_ext <- clean_scraped1(rna_ext_raw) %>% 
+  clean_scraped2()
+```
+
+
+Step 4: Save Data
+
+```{r}
+saveRDS(rna_ext, box_here("/rna_ext_01112021.RDS"))
+```
+
+### Nucleotides
+
+Step 1: Set up URL
+
+```{r}
+nucleotides_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=53980363&typed_term=nucl&searchterm=nucl&what=Nucleotides&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+Step 2: Scrape Data
+
+```{r}
+nucleotides_raw <- get_thomas_data(nucleotides_main, "Intermediary Product", "Nucleotides")
+```
+
+Step 3: Clean Data
+
+```{r}
+nucleotides <- clean_scraped1(nucleotides_raw) %>% 
+  clean_scraped2()
+```
+
+
+Step 4: Save Data
+
+```{r}
+saveRDS(nucleotides, box_here("/nucleotides_01112021.RDS"))
+```
+
+### Reagents: 
+
+There are multiple types of reagents on TN, and as such we will have to define a slightly different procedure for handling these products. 
+
+We start with an initial procedure of cleaning and scraping all entries
+
+#### Reagents
+
+```{r}
+reagents_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=66202367&typed_term=reage&searchterm=reage&what=Reagents&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+```{r}
+reagents_pages <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=66202367&searchsource=suppliers&searchterm=reage&what=Reagents&"
+```
+
+```{r}
+reagents_raw <- get_thomas_data_plus(reagents_main, reagents_pages, "Intermediary Product", "Reagents")
+```
+
+```{r}
+reagents <- clean_scraped1(reagents_raw) %>% 
+  clean_scraped2()
+```
+
+
+#### Reagent Bottles
+
+```{r}
+reagent_btl_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=7060809&typed_term=reagent&searchterm=reagent&what=Reagent+Bottles&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+```{r}
+reagent_btl_pages <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=7060809&searchsource=suppliers&searchterm=reagent&what=Reagent+Bottles&"
+```
+
+```{r}
+reagent_btl_raw <- get_thomas_data_plus(reagent_btl_main, reagent_btl_pages, "Intermediary Product", "Reagent Bottles")
+```
+
+```{r}
+reagent_btl <- clean_scraped1(reagent_btl_raw) %>% 
+  clean_scraped2()
+```
+
+```{r}
+reagents <- bind_rows(reagents, reagent_btl)
+```
+
+
+#### Bacteriological reagents
+
+```{r}
+bact_reagents_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=66202409&typed_term=Reagent&searchterm=Reagent&what=Bacteriological+Reagents&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+```{r}
+bact_reagents_raw <- get_thomas_data(bact_reagents_main, "Intermediary Product", "Bacteriological Reagents")
+```
+
+```{r}
+bact_reagents <- clean_scraped1(bact_reagents_raw) %>% 
+  clean_scraped2()
+```
+
+```{r}
+reagents <- bind_rows(reagents, bact_reagents)
+```
+
+
+#### Biochemical Reagents
+
+```{r}
+biochem_reagents_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=66203001&typed_term=reage&searchterm=reage&what=Biochemical+Reagents&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+```{r}
+biochem_reagents_pages <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=66203001&searchsource=suppliers&searchterm=reage&what=Biochemical+Reagents&"
+```
+
+```{r}
+biochem_reagents_raw <- get_thomas_data_plus(biochem_reagents_main, biochem_reagents_pages, "Intermediary Product", "Biochemical Reagents")
+```
+
+```{r}
+biochem_reagents <- clean_scraped1(biochem_reagents_raw) %>% 
+  clean_scraped2()
+```
+
+
+```{r}
+reagents <- bind_rows(reagents, biochem_reagents)
+```
+
+
+#### Diagnostic Reagents
+
+```{r}
+diag_reagents_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=66206004&typed_term=Reagents&searchterm=Reagents&what=Diagnostic+Reagents&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+```{r}
+diag_reagents_pages <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=66206004&searchsource=suppliers&searchterm=Reagents&what=Diagnostic+Reagents&"
+```
+
+```{r}
+diag_reagents_raw <- get_thomas_data_plus(diag_reagents_main, diag_reagents_pages, "Intermediary Product", "Diagnostic Reagents")
+```
+
+```{r}
+diag_reagents <- clean_scraped1(diag_reagents_raw) %>% 
+  clean_scraped2()
+```
+
+```{r}
+reagents <- bind_rows(reagents, diag_reagents)
+```
+
+
+#### Serological Reagents 
+
+```{r}
+serological_reagents <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=96127626&typed_term=serological+&searchterm=serological+&what=Serological+Reagents&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+```{r}
+sero_reagents_raw <- get_thomas_data(serological_reagents, "Intermediary Product", "Serological Reagents")
+```
+
+```{r}
+sero_reagents <- clean_scraped1(sero_reagents_raw) %>% 
+  clean_scraped2()
+```
+
+```{r}
+reagents <- bind_rows(reagents, sero_reagents)
+```
+
+
+#### Virological Reagents 
+
+```{r}
+viro_reagents_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=96127634&typed_term=vi+Reagents&searchterm=vi+Reagents&what=Virological+Reagents&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+
+```{r}
+viro_reagents_raw <- get_thomas_data(viro_reagents_main, "Intermediary Product", "Virological Reagents")
+```
+
+```{r}
+viro_reagents <- clean_scraped1(viro_reagents_raw) %>% 
+  clean_scraped2()
+```
+
+```{r}
+reagents_full <- bind_rows(reagents, viro_reagents)
+```
+
+```{r}
+saveRDS(reagents_full, box_here("/reagents_full_01112021.RDS"))
+```
+
+
+```{r}
+reagents_all <- reagents %>% 
+  group_by(company) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal < 2) %>% 
+  ungroup() %>% 
+  select(-tal) %>% 
+  mutate(specific_product = "Reagents (All)")
+```
+
+```{r}
+saveRDS(reagents_all, box_here("/reagents_all_01112021.RDS"))
+```
+
+
+
+```{r}
+test_int <- bind_rows(oro_swabs, naso_swabs) %>% 
+  bind_rows(vtm) %>% 
+  bind_rows(pcm_medical) %>% 
+  bind_rows(rna_ext) %>% 
+  bind_rows(nucleotides) %>%
+  bind_rows(reagents_all) %>% 
+  saveRDS(box_here("/test_int_01112021.RDS"))
+```
+
+### Other Products
+
+#### Vials
+
+Vials
+
+```{r}
+vials_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=91782607&typed_term=vials&searchterm=vials&what=Vials&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+```{r}
+vials_pages <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=91782607&searchsource=suppliers&searchterm=vials&what=Vials&"
+```
+
+```{r}
+vials_raw <- get_thomas_data_plus(vials_main, vials_pages, "Intermediary Product", "Vials") %>% 
+  mutate(search_product = "Vials")
+```
+
+```{r}
+vials <- clean_scraped1(vials_raw) %>% 
+  clean_scraped2()
+```
+
+```{r}
+glass_vials_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=91790303&typed_term=vials&searchterm=vials&what=Glass+Vials&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+```{r}
+glass_vials_pages <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=91790303&searchsource=suppliers&searchterm=vials&what=Glass+Vials&"
+```
+
+```{r}
+glass_vials_raw <- get_thomas_data_plus(glass_vials_main, glass_vials_pages, "Intermediary Product", "Glass Vials") %>% 
+  mutate(search_product = "Glass Vials")
+```
+
+```{r}
+glass_vials <- clean_scraped1(glass_vials_raw) %>% 
+  clean_scraped2()
+```
+
+```{r}
+vials_all <- bind_rows(vials, glass_vials) %>% 
+  group_by(company) %>% 
+  mutate(tal = seq(n())) %>%
+  mutate(specific_product = case_when(
+    tal == 2 ~ "Vials", 
+    TRUE ~ specific_product
+  )) %>% 
+  filter(tal < 2)
+```
+
+#### Pipettes and Pipette Tips
+
+```{r}
+pipettes_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=58671009&typed_term=pipettes&searchterm=pipettes&what=Pipettes&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+```{r}
+pipettes_pages <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=58671009&searchsource=suppliers&searchterm=pipettes&what=Pipettes&"
+```
+
+```{r}
+pipettes_raw <- get_thomas_data_plus(pipettes_main, pipettes_pages, "Intermediary Product", "Pipettes")
+```
+
+```{r}
+pipettes <- clean_scraped1(pipettes_raw) %>% 
+  clean_scraped2()
+```
+
+```{r}
+pipette_tips_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=96164330&typed_term=Pipette+tips&searchterm=Pipette+tips&what=Pipette+Tips&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+```{r}
+pipette_tips_pages <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=96164330&searchsource=suppliers&searchterm=Pipette+tips&what=Pipette+Tips&"
+```
+
+```{r}
+pipette_tips_raw <- get_thomas_data_plus(pipette_tips_main, pipette_tips_pages, "Intermediary Products", "Pipette Tips")
+```
+
+```{r}
+pipette_tips <- clean_scraped1(pipette_tips_raw) %>% 
+  clean_scraped2()
+```
+
+```{r}
+pipettes_all <- bind_rows(pipettes, pipette_tips)
+```
+#### Vortex Mixers
+
+```{r}
+vortex_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=97010384&typed_term=vortex+m&searchterm=vortex+m&what=Vortex+Mixers&WTZO=Find+Suppliers&searchsource=suppliers"
+```
+
+```{r}
+vortex_raw <- get_thomas_data(vortex_main, "Intermediary Product", "Vortex Mixers")
+```
+
+```{r}
+vortex <- clean_scraped1(vortex_raw) %>% 
+  clean_scraped2()
+```
+
+#### Microcentrifuges
+```{r}
+microcentrifuges_main <- "https://www.thomasnet.com/nsearch.html?cov=NA&heading=96001235&typed_term=microcen&searchterm=microcen&what=Microcentrifuges&WTZO=Find+Suppliers&searchsource=supplierss"
+```
+
+```{r}
+microcentrifuges_raw <- get_thomas_data(microcentrifuges_main, "Intermediary Product", "Microcentrifuges")
+```
+
+```{r}
+microcentrifuges <- clean_scraped1(microcentrifuges_raw) %>% 
+  clean_scraped2()
+```
+```{r}
+other_products <- bind_rows(vials_all, pipettes_all) %>% 
+  bind_rows(vortex) %>% 
+  bind_rows(microcentrifuges)
+```
+
+```{r}
+saveRDS(other_products, box_here("/test_other_01112021.RDS"))
+```
+
+

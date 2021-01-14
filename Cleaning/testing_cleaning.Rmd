@@ -1,0 +1,802 @@
+---
+title: "thomasnet_cleaning_functions"
+author: "Nikhil Kalathil"
+date: "6/18/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r, include == FALSE }
+library(tidyverse)
+library(tidytext)
+library(RColorBrewer)
+library(ggthemes)
+library(tm)
+library(here)
+library(ggrepel)
+library(lubridate)
+library(ggnewscale)
+library(readxl)
+library(htmltools)
+library(htmlwidgets)
+library(RJSONIO)
+```
+
+# Define Directory
+
+```{r}
+
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Tests/Thomasnet Pulls/"
+
+```
+
+```{r}
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+```
+
+# Read and Bind
+
+```{r}
+read_bind <- function(date) {
+  
+  
+  file_suffix <- str_replace_all(date, "\\_", "")
+  
+  end_prods <- readRDS(paste(box_dir, date, "/test_end_", file_suffix, ".RDS", sep ="")) %>% 
+      group_by(company) %>% 
+    mutate(tal = seq(n())) %>% 
+    mutate(specific_product = case_when(
+      tal == 2 ~ "Covid-19 Test Kits", 
+      TRUE ~ specific_product)) %>% 
+    filter(tal < 2) %>% 
+    select(-tal) %>% 
+    mutate(antibody = case_when(
+        specific_product == "Covid-19 Test Kits" & (str_detect(desc, "IgG") | str_detect(desc, "IgM") | str_detect(desc, "antibody") | str_detect(desc, "Antibody") | str_detect(desc, "serological")) ~ 1, 
+      TRUE ~ 0), 
+      antigen = case_when(
+        specific_product == "Covid-19 Test Kits" & (str_detect(desc, "IgA") | str_detect(desc, "antigen") | str_detect(desc, "Antigen")) ~ 1, 
+      TRUE ~ 0),
+      PCR = case_when(
+        specific_product == "Covid-19 Test Kits" & str_detect(desc, "PCR") ~ 1, 
+      TRUE ~ 0), 
+      unknown = case_when(
+       specific_product == "Covid-19 Test Kits" & antibody == 0 & antigen == 0 & PCR == 0 ~ 1, 
+       TRUE ~ 0
+        )
+    ) %>% 
+    ungroup() %>% 
+      filter(str_detect(desc, "test") | str_detect(desc, "medical") | str_detect(desc, "detection"))
+  
+  int_prods <- readRDS(paste(box_dir, date, "/test_int_", file_suffix, ".RDS", sep =""))
+  
+    df <- bind_rows(end_prods, int_prods) 
+    
+    return(df)
+}
+```
+
+```{r}
+read_reagents <- function(date) {
+  
+   file_suffix <- str_replace_all(date, "\\_", "")
+   
+   reagents <- readRDS(paste(box_dir, date, "/reagents_full_", file_suffix, ".RDS", sep ="")) 
+   
+   return(reagents)
+   
+}
+```
+
+```{r}
+read_other <- function(date) {
+  
+   file_suffix <- str_replace_all(date, "\\_", "")
+   
+   other <- readRDS(paste(box_dir, date, "/test_other_", file_suffix, ".RDS", sep ="")) 
+   
+   return(other)
+   
+}
+```
+
+
+
+# Define Suppliers
+
+```{r}
+suppliers <- function(data){ 
+  data %>% 
+    mutate(broad_loc = case_when(
+    str_detect(loc_desc, "Manufacturer\\*") ~ "Primary Manufacturer", 
+    str_detect(loc_desc, "Manufacturer") & str_detect(loc_desc, "Manufacturer\\*", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep", negate = TRUE) ~ "Secondary Manufacturer",
+    str_detect(loc_desc, "Distributor") | str_detect(loc_desc, "Manufacturers' Rep*") ~ "Distributor", 
+    str_detect(loc_desc, "Manufacturer", negate = TRUE) & str_detect(loc_desc, "Manufacturer\\*", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep", negate = TRUE) & 
+      str_detect(loc_desc, "Distributor", negate = TRUE) &
+      str_detect(loc_desc, "Manufacturers' Rep*", negate = TRUE) ~ "Other"))
+  }
+```
+
+# Put Together
+
+```{r}
+clean_prods <- function(date){
+  
+  raw <- read_bind(date)
+  
+  file_suffix <- str_replace_all(date, "\\_", "")
+  
+  raw %>% 
+    suppliers() %>%
+      mutate(date = mdy(file_suffix))
+    
+    
+}
+```
+
+```{r}
+clean_reagents <- function(date){ 
+  raw <- read_reagents(date)
+  
+  file_suffix <- str_replace_all(date, "\\_", "")
+  
+  raw %>% 
+    suppliers() %>%
+      mutate(date = mdy(file_suffix))
+  
+  }
+```
+
+```{r}
+clean_other <- function(date){ 
+  raw <- read_other(date)
+  
+  file_suffix <- str_replace_all(date, "\\_", "")
+  
+  raw %>% 
+    suppliers() %>%
+      mutate(date = mdy(file_suffix))
+  
+  }
+```
+
+
+# Combine Datasets
+
+## Combining datasets
+
+```{r}
+thomas_files <- list()
+
+file_list <- list.files(box_dir)
+
+i <- 1
+
+for (file in 1:length(file_list)) {
+  
+  filename <- file_list[file]
+  
+  print(filename)
+  
+  thomas_files[[file]] <- clean_prods(filename)
+  
+  i <- i+1
+}
+```
+```{r}
+test_prods <- bind_rows(thomas_files[[1]], thomas_files[[2]])
+```
+
+
+```{r, eval = FALSE}
+test_prods <- bind_rows(thomas_files[[1]], thomas_files[[2]])
+
+for (i in 3:length(thomas_files)) {
+  
+  test_prods <- bind_rows(test_prods, thomas_files[[i]])
+  
+  i <- i+1
+}
+```
+
+```{r}
+reagents_files <- list()
+
+file_list <- list.files(box_dir)
+
+i <- 1
+
+for (file in 1:length(file_list)) {
+  
+  filename <- file_list[file]
+  
+  print(filename)
+  
+  reagents_files[[file]] <- clean_reagents(filename)
+  
+  i <- i+1
+}
+```
+
+```{r}
+reagents <- bind_rows(reagents_files[[1]], reagents_files[[2]])
+```
+
+```{r}
+other_files <- list()
+
+file_list <- list.files(box_dir)
+
+i <- 1
+
+for (file in 1:length(file_list)) {
+  
+  filename <- file_list[file]
+  
+  print(filename)
+  
+  other_files[[file]] <- clean_other(filename)
+  
+  i <- i+1
+}
+```
+
+```{r}
+other <- bind_rows(other_files[[1]], other_files[[2]])
+```
+
+
+```{r}
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Tests/"
+```
+
+```{r}
+saveRDS(test_prods, box_here("thomasnet_totals/test_prods.RDS"))
+```
+
+```{r}
+saveRDS(other, box_here("thomasnet_totals/other_prods.RDS"))
+```
+
+```{r}
+saveRDS(reagents, box_here("thomasnet_totals/reagent_prods.RDS"))
+```
+
+
+# Structure and Graph
+
+```{r}
+test_struc <- test_prods %>% 
+  mutate(broad_loc = case_when(
+    str_detect(broad_loc, "Manuf") ~ "Manufacturer", 
+    str_detect(broad_loc, "Dist") ~ "Distributor",
+    TRUE ~ "Other/Unknown"
+  ), 
+  broad_loc = case_when(
+    str_detect(desc, fixed("distributor", ignore_case = TRUE)) & str_detect(desc, fixed("manufacturer", ignore_case = TRUE), negate = TRUE) ~ "Distributor", 
+    TRUE ~ broad_loc
+  )) %>%  
+    group_by(specific_product, company, date) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1)
+```
+
+```{r}
+reagents_struc <- reagents %>% 
+   mutate(broad_loc = case_when(
+    str_detect(broad_loc, "Manuf") ~ "Manufacturer", 
+    str_detect(broad_loc, "Dist") ~ "Distributor",
+    TRUE ~ "Other/Unknown"
+  ), 
+  broad_loc = case_when(
+    str_detect(desc, fixed("distributor", ignore_case = TRUE)) & str_detect(desc, fixed("manufacturer", ignore_case = TRUE), negate = TRUE) ~ "Distributor", 
+    TRUE ~ broad_loc
+  )) %>%  
+    group_by(specific_product, company, date) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1)
+```
+
+```{r}
+other_struc <- other %>% 
+   mutate(broad_loc = case_when(
+    str_detect(broad_loc, "Manuf") ~ "Manufacturer", 
+    str_detect(broad_loc, "Dist") ~ "Distributor",
+    TRUE ~ "Other/Unknown"
+  ), 
+  broad_loc = case_when(
+    str_detect(desc, fixed("distributor", ignore_case = TRUE)) & str_detect(desc, fixed("manufacturer", ignore_case = TRUE), negate = TRUE) ~ "Distributor", 
+    TRUE ~ broad_loc
+  )) %>%  
+    group_by(specific_product, company, date) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1)
+```
+
+
+
+## Differentiating by Supplier Type
+```{r}
+my_pal <- c(brewer.pal(4, "Set3")[4], brewer.pal(4, "Paired")[2])
+```
+
+
+```{r}
+sup1 <- test_struc %>% 
+  group_by(date, broad_product, specific_product, broad_loc) %>% 
+  count() %>% 
+  ungroup() %>% 
+  mutate(pos_loc = case_when(
+    broad_loc == "Manufacturer" ~ 1, 
+    broad_loc == "Distributor" ~ 2, 
+    broad_loc == "Other/Unknown" ~ 3
+  )) %>% 
+  filter(broad_loc != "Other/Unknown") %>% 
+  mutate(specific_product = reorder(specific_product, n), 
+         broad_loc = reorder(broad_loc, -pos_loc)) %>% 
+  ggplot(aes(date, n, fill = broad_loc, group = broad_loc)) +
+  geom_area(position = "stack", show.legend = FALSE, color = "Black", alpha = 0.8 ) +
+  geom_point(shape =21, color = "Black", alpha = 0.7, size = 1 ,position = "stack") +
+  scale_fill_manual(values = my_pal) + 
+  facet_wrap(~reorder(specific_product, n)) +
+  labs(title = "Number of Suppliers by Product and Thomasnet Supplier Type", subtitle = "Thomasnet 05/30/20 - 11/02/20", y = "Unique Thomasnet Suppliers", x = "", fill = "Supplier Type") + 
+  theme_bw()
+
+sup1
+```
+# Base Graphs
+
+```{r}
+thomas_graph <- test_struc %>% 
+  filter(!specific_product %in% c("Reagents (All)", "Plastics Contract Manufacturing"), broad_loc == "Manufacturer" ) %>% 
+  group_by(date, broad_product, specific_product) %>% 
+  summarise(antigen = sum(antigen, na.rm = TRUE), antibody = sum(antibody, na.rm = TRUE), PCR = sum(PCR, na.rm = TRUE), unknown = sum(unknown, na.rm = TRUE), n = n()) %>% 
+  ungroup() %>% 
+  mutate(pos = case_when(
+    specific_product == "Covid-19 Test Kits" ~ 1, 
+    specific_product == "Other Test Kits" ~ 2, 
+    specific_product == "Oropharyngeal Swabs" ~ 4, 
+    specific_product == "Nasopharyngeal Swabs" ~ 5, 
+    specific_product == "RNA Extraction Machine" ~ 3,
+    specific_product == "Nucleotides" ~ 6,
+    specific_product == "Reagents (All)" ~ 7, 
+    specific_product == "Plastics Contract Manufacturing" ~ 8, 
+    specific_product == "Viral Transport Medium (VTM)" ~ 9 
+  )) %>% 
+  mutate(specific_product = fct_reorder(specific_product, -pos)) 
+```
+```{r}
+covid_tests_graph <- test_struc %>% 
+  filter(specific_product != "NA", broad_loc == "Manufacturer", specific_product == "Covid-19 Test Kits" )
+```
+
+
+```{r}
+reagents_graph <- reagents_struc %>% 
+  filter(specific_product != "NA", broad_loc == "Manufacturer" ) %>% 
+  group_by(date, broad_product, specific_product) %>% 
+  count()  %>% 
+  ungroup() %>% 
+  mutate(pos = case_when(
+    specific_product == "Reagents" ~ 1, 
+    specific_product == "Bacteriological Reagents" ~ 4, 
+    specific_product == "Biochemical Reagents" ~ 3, 
+    specific_product == "Diagnostic Reagents" ~ 2, 
+    specific_product == "Serological Reagents" ~ 6,
+    specific_product == "Virological Reagents" ~ 5,
+    specific_product == "Reagent Bottles" ~ 7
+  )) %>% 
+  mutate(specific_product = fct_reorder(specific_product, -pos)) 
+```
+
+```{r}
+other_graph <- other_struc %>% 
+  filter(specific_product != "NA", broad_loc == "Manufacturer" ) %>% 
+  group_by(date, broad_product, specific_product) %>% 
+  count()  %>% 
+  ungroup() %>% 
+  mutate(pos = case_when(
+    specific_product == "Vials" ~ 1, 
+    specific_product == "Pipettes" ~ 2, 
+    specific_product == "Pipette Tips" ~ 3, 
+    specific_product == "Vortex Mixers" ~ 4, 
+    specific_product == "Microcentrifuges" ~ 5, 
+    specific_product == "Glass Vials" ~ 6
+  )) %>% 
+  mutate(specific_product = fct_reorder(specific_product, -pos)) 
+```
+
+
+```{r}
+fig_1 <- thomas_graph %>% 
+  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
+  geom_col(position = "stack", show.legend = FALSE) + 
+  geom_label(show.legend = FALSE) + 
+  scale_fill_brewer(palette = "Set3") +
+  labs(title = "Number of Potential Domestic Manufacturing Entities by Product Type", subtitle = "Source: Thomasnet, 1/7/2021. Manufacturers Self-Identifying as: \nProducing Potentially Relevant Products for COVID-19 Tests", x = "", y = "Unique Manufacturing Entities") + 
+  coord_flip() + 
+  theme_bw()
+```
+
+```{r}
+fig_2 <- reagents_graph %>% 
+  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
+  geom_col(position = "stack", show.legend = FALSE) + 
+  geom_label(show.legend = FALSE) + 
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Number of Potential Domestic Manufacturing Entities by Product Type", subtitle = "Source: Thomasnet, 1/7/2021. Manufacturers Self-Identifying as: \nProducing Reagents Potentially Relevant to COVID-19 Tests", x = "", y = "Unique Manufacturing Entities") + 
+  coord_flip() + 
+  theme_bw()
+```
+
+```{r}
+fig_3 <- other_graph %>% 
+  ggplot(aes(specific_product, n, fill = specific_product, label = n)) +
+  geom_col(position = "stack", show.legend = FALSE) + 
+  geom_label(show.legend = FALSE) + 
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Number of Potential Domestic Manufacturing Entities by Product Type", subtitle = "Source: Thomasnet, 1/7/2021. Manufacturers Self-Identifying as: \nProducing Other Products Potentially Relevant to COVID-19 Tests", x = "", y = "Unique Manufacturing Entities") + 
+  coord_flip() + 
+  theme_bw()
+```
+
+
+# Mapping
+
+```{r}
+test_map <- test_struc %>% 
+  filter(broad_loc == "Manufacturer" )
+```
+
+```{r}
+other_map <- other_struc %>% 
+  filter(broad_loc == "Manufacturer")
+```
+
+```{r}
+test_addresses <- test_map %>% 
+  ungroup() %>% 
+  distinct(company, location) %>% 
+  mutate(address = paste(company, location, sep = ", "))
+```
+
+```{r}
+other_addresses <- other_map %>% 
+  ungroup() %>% 
+  distinct(company, location) %>% 
+  mutate(address = paste(company, location, sep = ", "))
+```
+
+# Geocoding
+
+
+```{r, echo = FALSE, Include = FALSE}
+api_key <- c("AIzaSyA1pwzK3BaX7_um-_TUrS7aGfCHQvp68b8")
+```
+
+We define our function, which will take an address as an input and output a latitude and longitude result. 
+
+```{r}
+geocodeAddress <- function(address) {
+  require(RJSONIO)
+  url <- "https://maps.googleapis.com/maps/api/geocode/json?address="
+  url <- URLencode(paste(url, address, sep = ""))
+  url <- URLencode(paste(url, "&key=", api_key, sep = ""))
+  x <- fromJSON(url, simplify = FALSE)
+  print(x$status)
+  if (x$status == "OK") {
+    out <- c(x$results[[1]]$geometry$location$lng,
+             x$results[[1]]$geometry$location$lat,
+             x$results[[1]]$formatted_address)
+  } else {
+    out <- NA
+  }
+  Sys.sleep(0.2)  # API only allows 5 requests per second
+  out
+}
+```
+
+```{r, include = FALSE}
+for(i in 1:nrow(test_addresses))
+{
+  result <- geocodeAddress(test_addresses$address[i])
+  test_addresses$long[i] <- as.numeric(result[1])
+  test_addresses$lat[i] <- as.numeric(result[2])
+  test_addresses$form_address[i] <- as.character(result[3])
+
+}
+```
+
+```{r, include = FALSE}
+for(i in 1:nrow(other_addresses))
+{
+  result <- geocodeAddress(other_addresses$address[i])
+  other_addresses$long[i] <- as.numeric(result[1])
+  other_addresses$lat[i] <- as.numeric(result[2])
+  other_addresses$form_address[i] <- as.character(result[3])
+
+}
+```
+
+
+```{r}
+geocoded_test_maps <- left_join(test_map, test_addresses) %>% 
+  ungroup()
+```
+```{r}
+geocoded_other_maps <- left_join(other_map, other_addresses)
+```
+
+```{r}
+geocoded_tests <- bind_rows(geocoded_test_maps, geocoded_other_maps) %>% 
+  group_by(company, location) %>% 
+  mutate(first_date = min(date), 
+         last_date = max(date)) %>% 
+  ungroup()
+```
+
+```{r}
+saveRDS(geocoded_tests, box_here("thomasnet_totals/geocoded_tests.RDS"))
+```
+
+```{r}
+unique_geocoded_tests <- geocoded_tests %>% 
+  filter(date == max(date)) 
+
+unique_geocoded_tests <- anti_join(unique_geocoded_tests, geocoded_tests, by = c("company", "location")) %>% 
+  bind_rows(unique_geocoded_tests)
+  
+```
+
+```{r}
+unique_geocoded_tests <- unique_geocoded_tests %>% 
+  mutate(Primers = case_when(str_detect(desc, fixed("primer", ignore_case = TRUE)) == 1 ~ 1), 
+         Probes = case_when(str_detect(desc, fixed("probe", ignore_case = TRUE)) == 1 ~ 1), 
+         master_mix = case_when(str_detect(desc, fixed("master mix", ignore_case = TRUE)) == 1 & str_detect(desc, fixed("green master mix", ignore_case = TRUE)) != 1 ~ 1), 
+         Detection = case_when(str_detect(desc, fixed("detection", ignore_case = TRUE)) == 1 ~ 1)) %>% 
+  mutate(saliva_direct = case_when(
+    Primers == 1 | Probes == 1 | master_mix == 1 | Detection == 1 ~ 1
+  ))
+```
+
+```{r}
+prepare_for_maps <- function(df) {
+  df %>% 
+    mutate(layerId = paste(specific_product, row_number(), sep = '.'),
+                      popup = paste("<strong>Company Name:</strong>",
+                                    df$company, "<br>",
+                                    "<strong>Address:</strong>", 
+                                    df$address, "<br>",
+                                    "<strong>Broad Product:</strong>", 
+                                    df$broad_product, "<br>",
+                                    "<strong>Specific Product:</strong>", 
+                                    df$specific_product, "<br>",
+                                    "<strong>(TN) Sales:</strong>", 
+                                    df$sales, "<br>",
+                                    "<strong>(TN) Employees:</strong>", 
+                                    df$employees, "<br>",
+                                    "<strong>(TN) Date Founded:</strong>",
+                                    df$date_founded, "<br>",
+                                    "<strong>Thomas Verified:</strong>",
+                                    df$thomas_ver, "<br>",
+                                    "<strong>Thomasnet Covid-19 Response:</strong>",
+                                    df$covid_19, "<br>",
+                                    "<strong>Thomasnet Description:</strong>", 
+                                    df$desc, "<br>",
+                                    "<strong>Antibody Test:</strong>", 
+                                    df$antibody, "<br>",
+                                    "<strong>Antigen Test:</strong>", 
+                                    df$antigen, "<br>",
+                                    "<strong>PCR Test:</strong>", 
+                                    df$PCR, "<br>", 
+                                    "<strong>First Date in Data:</strong>", 
+                                    df$first_date, "<br>", 
+                                    "<strong>Last Date in Data:</strong>", 
+                                    df$last_date, "<br>",
+                                    "<strong>Potentially Useful in Saliva Direct Test:</strong>", 
+                                    df$saliva_direct, "<br>"
+                                    ), 
+                      group = specific_product)
+
+}
+```
+
+We first use this function to set up our individual data layers for mapping. 
+
+```{r}
+tests_maps <- prepare_for_maps(unique_geocoded_tests)
+```
+
+# Mapping 
+
+```{r}
+tests_maps %>% 
+  saveRDS(box_here("thomasnet_totals/tests_geocoded.RDS"))
+```
+
+```{r}
+tests_maps %>% saveRDS(here("/domestic_manufacturers/tests_geocoded.RDS"))
+```
+
+# Saliva Direct BoM
+
+Step 1: Manual search for various entries
+
+## Thomasnet Suppliers
+
+Results for: Primer, Probe, Master Mix, Detection 
+
+```{r}
+saliva_direct <- geocoded_tests %>% 
+  mutate(Primers = case_when(str_detect(desc, fixed("primer", ignore_case = TRUE)) == 1 ~ 1), 
+         Probes = case_when(str_detect(desc, fixed("probe", ignore_case = TRUE)) == 1 ~ 1), 
+         master_mix = case_when(str_detect(desc, fixed("master mix", ignore_case = TRUE)) == 1 & str_detect(desc, fixed("green master mix", ignore_case = TRUE)) != 1 ~ 1), 
+         Detection = case_when(str_detect(desc, fixed("detection", ignore_case = TRUE)) == 1 ~ 1)) %>% 
+  filter(Primers == 1 | Probes == 1 | master_mix == 1 | Detection == 1)
+```
+
+```{r}
+saliva_direct %>% 
+  filter(date == max(date)) %>%
+  write_csv(box_here("saliva_direct_potential_suppliers.csv"))
+```
+
+```{r}
+saliva_direct_primers <- saliva_direct %>% 
+  filter(Primers == 1) %>% 
+  mutate(product = "Primers")
+
+saliva_direct_probes <- saliva_direct %>% 
+  filter(Probes == 1) %>% 
+  mutate(product = "Probes")
+
+saliva_direct_master_mix <- saliva_direct %>% 
+  filter(master_mix == 1) %>% 
+  mutate(product = "Master Mix")
+
+saliva_direct_detection <- saliva_direct %>% 
+  filter(Detection == 1) %>% 
+  mutate(product = "Detection")
+
+saliva_direct_maps <- bind_rows(saliva_direct_primers, saliva_direct_probes) %>% 
+  bind_rows(saliva_direct_master_mix) %>% 
+  bind_rows(saliva_direct_detection)
+
+rm(saliva_direct_primers, saliva_direct_probes, saliva_direct_master_mix, saliva_direct_detection)
+```
+
+
+```{r}
+saliva_direct_graph <- saliva_direct %>% 
+  group_by(date) %>% 
+  summarise(Primers = sum(Primers, na.rm = TRUE), Probes = sum(Probes, na.rm = TRUE), master_mix = sum(master_mix, na.rm = TRUE), Detection = sum(Detection, na.rm = TRUE)) %>% 
+  pivot_longer(cols = -date, names_to = "product", values_to = "n") %>% 
+  mutate(product = if_else(product == "master_mix", "Master Mix", product))
+```
+```{r}
+fig_4 <- saliva_direct_graph %>% 
+  filter(date == max(date)) %>% 
+  ggplot(aes(reorder(product, n), n, fill = product, label = n)) +
+  geom_col(position = "stack", show.legend = FALSE) + 
+  geom_label(show.legend = FALSE) + 
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Number of Potential Domestic Manufacturing Entities by Product Type", subtitle = "Source: Thomasnet, 1/11/2021. Manufacturers Self-Identifying as: \nProducing Products Potentially Relevant to Saliva Direct COVID-19 Tests ", x = "", y = "Unique Manufacturing Entities") + 
+  coord_flip() + 
+  theme_bw()
+```
+
+
+## Saliva Direct Labs
+
+```{r}
+sd_labs <- read_xlsx(box_here("saliva_direct_labs.xlsx")) 
+```
+
+```{r}
+sd_labs <- sd_labs %>% 
+  mutate(contact = str_trim(contact), 
+         product = "Saliva Direct Lab")
+```
+
+```{r, include = FALSE}
+for(i in 1:nrow(sd_labs))
+{
+  result <- geocodeAddress(sd_labs$address[i])
+  sd_labs$long[i] <- as.numeric(result[1])
+  sd_labs$lat[i] <- as.numeric(result[2])
+  sd_labs$form_address[i] <- as.character(result[3])
+
+}
+```
+
+```{r}
+prepare_for_maps_sd_labs <- function(df) {
+  df %>% 
+    mutate(layerId = paste(product, row_number(), sep = '.'),
+                      popup = paste("<strong>Lab Name:</strong>",
+                                    df$company_name, "<br>",
+                                    "<strong>Address:</strong>", 
+                                    df$address, "<br>",
+                                    "<strong>Contact:</strong>", 
+                                    df$contact, "<br>",
+                                    "<strong>Phone:</strong>", 
+                                    df$phone, "<br>",
+                                    "<strong>Email:</strong>", 
+                                    df$email, "<br>",
+                                    "<strong>Product:</strong>", 
+                                    df$product, "<br>"
+                                    ), 
+                      group = product)
+
+}
+```
+
+```{r}
+prepare_for_maps_sd <- function(df) {
+  df %>% 
+    mutate(layerId = paste(product, row_number(), sep = '.'),
+                      popup = paste("<strong>Company Name:</strong>",
+                                    df$company, "<br>",
+                                    "<strong>Address:</strong>", 
+                                    df$address, "<br>",
+                                    "<strong>Broad Product:</strong>", 
+                                    df$broad_product, "<br>",
+                                    "<strong>Specific Product:</strong>", 
+                                    df$specific_product, "<br>",
+                                    "<strong>(TN) Sales:</strong>", 
+                                    df$sales, "<br>",
+                                    "<strong>(TN) Employees:</strong>", 
+                                    df$employees, "<br>",
+                                    "<strong>(TN) Date Founded:</strong>",
+                                    df$date_founded, "<br>",
+                                    "<strong>Thomas Verified:</strong>",
+                                    df$thomas_ver, "<br>",
+                                    "<strong>Thomasnet Covid-19 Response:</strong>",
+                                    df$covid_19, "<br>",
+                                    "<strong>Thomasnet Description:</strong>", 
+                                    df$desc, "<br>",
+                                    "<strong>Antibody Test:</strong>", 
+                                    df$antibody, "<br>",
+                                    "<strong>Antigen Test:</strong>", 
+                                    df$antigen, "<br>",
+                                    "<strong>PCR Test:</strong>", 
+                                    df$PCR, "<br>", 
+                                    "<strong>First Date in Data:</strong>", 
+                                    df$first_date, "<br>", 
+                                    "<strong>Last Date in Data:</strong>", 
+                                    df$last_date, "<br>"
+                                    ), 
+                      group = product)
+
+}
+```
+
+```{r}
+sd_labs <- prepare_for_maps_sd_labs(sd_labs) %>% 
+  rename(company = company_name) %>% 
+  select(company, address, lat, long, form_address, product, popup)
+```
+
+```{r}
+sd_maps <- prepare_for_maps_sd(saliva_direct_maps) %>% 
+    select(company, address, lat, long, form_address, product, popup)
+```
+
+```{r}
+sd_maps <- bind_rows(sd_labs, sd_maps)
+```
+
+```{r}
+sd_maps %>% saveRDS(here("/domestic_manufacturers/sd_geocoded.RDS"))
+```
+
