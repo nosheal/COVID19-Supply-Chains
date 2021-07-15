@@ -1,0 +1,480 @@
+---
+title: "NIOSH and FDA Webscraping"
+author: "Nikhil Kalathil"
+date: "4/13/2021"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document will contain a program to webscrap and format Thomasnet search data. The results of this program are not complete and require additional cleaning/manual data entry, but this program should solve the problem of needing to download large Thomasnet searches. 
+
+```{r, include = FALSE}
+library(tidyverse)
+library(rvest)
+library(rebus)
+library(lubridate)
+library(here)
+library(ggthemes)
+```
+
+```{r}
+
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/FDA/"
+
+```
+
+```{r}
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+```
+
+# NIOSH 
+
+```{r}
+base_url <- "https://www.cdc.gov/niosh/npptl/topics/respirators/disp_part/"
+```
+```{r}
+get_pages <- function(html){
+  pages <- read_html(html) %>% 
+  html_nodes(".col-md-12") %>% 
+  html_nodes(".card-body.bg-cyan-t") %>% 
+  html_nodes("h4 a") %>% 
+  html_attr("href")
+  
+  return(pages)
+}
+```
+```{r}
+pages <- get_pages("https://www.cdc.gov/niosh/npptl/topics/respirators/disp_part/N95list1.html")
+
+page_paste <- function(x) {
+  paste0(base_url, x)
+}
+```
+
+```{r}
+list_of_pages <- sapply(pages, page_paste)
+```
+```{r}
+get_products <- function(html){
+  niosh_table <- read_html(html) %>% 
+    html_table(fill = true)
+
+
+  return(niosh_table[[1]])
+}
+
+get_notes <- function(html){
+  niosh_table <- read_html(html) %>% 
+    html_table(fill = true)
+  
+  return(niosh_table[[2]])
+}
+
+```
+
+
+```{r}
+niosh_n95<- map_dfr(list_of_pages[1:27], get_products)
+```
+
+```{r}
+colnames(niosh_n95) <-  c("comp_info", "model_no", "approval_num", 
+                              "valve", "donning_proc", "model_2")
+
+
+niosh_n95 <- niosh_n95 %>% 
+  mutate(model_no = case_when(is.na(model_no) ~ model_2, 
+                              TRUE ~ model_no)) %>% 
+  select(-c("model_2"))
+```
+
+```{r}
+expand_models <- function(data) { 
+  data %>%
+    mutate(model_no = str_replace_all(model_no, 
+                                 "\\)", ")\n")) %>% 
+  mutate(model_no = str_trim(model_no)) %>%
+  mutate(model_no = str_replace_all(model_no,
+                                    "/ ", ",")) %>% 
+  mutate(model_no = str_replace_all(model_no, "\n", ",")) %>% 
+  mutate(model_no = str_replace_all(model_no, ",,", ","))
+  
+  
+  }
+```
+
+
+```{r}
+niosh_n95_str <- niosh_n95 %>% 
+  expand_models() %>% 
+  mutate(specific_product = "N95 Respirator")
+```
+
+```{r}
+niosh_n95_full <- separate_rows(niosh_n95_str, 2, sep = ",")
+```
+
+
+```{r}
+n95_notes <- get_notes(list_of_pages[1]) %>% 
+  mutate(specific_product = "N95 Respirator")
+```
+
+```{r}
+get_product_table <- function(html, x) {
+  product_raw <- read_html(html) %>% 
+    html_table(fill = TRUE)
+  
+  product <- product_raw[[x]]
+  return(product)
+}
+```
+
+```{r}
+surgical_n95 <- get_product_table("https://www.cdc.gov/niosh/npptl/topics/respirators/disp_part/respsource3surgicaln95.html", 1) 
+```
+
+```{r}
+colnames(surgical_n95) <- c("comp_info", "model_no", "approval_num", 
+                              "donning_proc", "drop")
+
+surgical_n95_str <- surgical_n95 %>% 
+  filter(str_detect(comp_info, "Private Label", negate = TRUE)) %>% 
+  select(-c("drop")) %>% 
+  expand_models() %>% 
+  mutate(specific_product = "Surgical N95 Respirator")
+```
+
+```{r}
+surgical_n95_full <- separate_rows(surgical_n95_str, 2, sep = ",")
+```
+
+```{r}
+niosh_n99 <- get_product_table("https://www.cdc.gov/niosh/npptl/topics/respirators/disp_part/n99list1.html", 1)
+n99_notes <- get_product_table("https://www.cdc.gov/niosh/npptl/topics/respirators/disp_part/n99list1.html", 2) %>% 
+  mutate(specific_product = "N99 Respirator")
+```
+
+```{r}
+colnames(niosh_n99) <- c("comp_info", "model_no", "approval_num", 
+                              "valve", "donning_proc")
+
+niosh_n99_str <- niosh_n99 %>% 
+  expand_models() %>% 
+  mutate(specific_product = "N99 Respirator")
+```
+
+```{r}
+niosh_n99_full <- separate_rows(niosh_n99_str, 2, sep = ",")
+```
+
+
+```{r}
+niosh_n100 <- get_product_table("https://www.cdc.gov/niosh/npptl/topics/respirators/disp_part/n100list1.html", 1)
+n100_notes <- get_product_table("https://www.cdc.gov/niosh/npptl/topics/respirators/disp_part/n100list1.html", 2) %>% 
+  mutate(specific_product = "N100 Respirator")
+```
+
+```{r}
+colnames(niosh_n100) <- c("comp_info", "model_no", "approval_num", 
+                              "valve", "donning_proc") 
+
+niosh_n100_str <- niosh_n100 %>% 
+  expand_models() %>% 
+  mutate(specific_product = "N100 Respirator")
+```
+
+```{r}
+niosh_n100_full <- separate_rows(niosh_n100_str, 2, sep = ",")
+```
+
+```{r}
+niosh_all <- bind_rows(niosh_n95_full, surgical_n95_full) %>% 
+  bind_rows(niosh_n99_full) %>% 
+  bind_rows(niosh_n100_full)
+
+```
+
+```{r}
+niosh_all <- niosh_all %>% 
+  mutate(approval_num = toupper(approval_num)) %>% 
+  filter(str_detect(approval_num, "BACK TO TOP", negate = TRUE)) 
+```
+
+```{r}
+niosh_notes <- bind_rows(n95_notes, n99_notes) %>% 
+  bind_rows(n100_notes)
+
+saveRDS(niosh_notes, box_here("niosh_notes_webscraped.RDS")) 
+```
+
+```{r}
+saveRDS(niosh_all, box_here("niosh_webscraped.RDS"))
+```
+
+# FDA EUA 
+
+```{r}
+fda <- "https://www.fda.gov/medical-devices/coronavirus-disease-2019-covid-19-emergency-use-authorizations-medical-devices/personal-protective-equipment-euas"
+```
+
+```{r}
+fda_html <- read_html(fda)
+```
+
+```{r}
+fda_tables <- fda_html %>% html_table()
+```
+
+```{r}
+surgical_eua <- fda_tables[[1]]
+```
+
+```{r}
+removed_surgical <- fda_tables[[2]]
+```
+
+```{r}
+china_non_niosh <- fda_tables[[4]]
+```
+
+```{r}
+china_removed <- fda_tables[[5]]
+```
+
+```{r}
+imported_ffp <- fda_tables[[6]]
+```
+
+```{r}
+other_bio <- fda_tables[[7]]
+```
+
+# FDA 510K 
+
+We can download the FDA510K database from 1996 to current and read that file. In addition, we can scrape FDA510 applications from 2017 to present. We present cleaning procedures for both. 
+
+```{r}
+fda_510_html <- read_html("https://www.fda.gov/medical-devices/510k-clearances/february-2019-510k-clearances")
+```
+
+```{r}
+test <- fda_510_html %>% html_nodes(".col-md-8.col-md-push-2") 
+```
+
+```{r}
+test1 <- test %>% html_text(trim = TRUE) %>% strsplit("DEVICE:") 
+
+test2 <- as.data.frame(test1[[1]])
+
+colnames(test2) <- c("full_desc")
+```
+
+```{r}
+test3 <- test2 %>% 
+  separate(full_desc, into = c("device_company", "other"), sep = "510") %>% 
+  separate(device_company, into = c("device", "company"), sep = "\n") %>% 
+  separate(other, into = c("info", "date"), sep = "SE DECISION MADE:") %>% 
+  separate(date, into = c("date", "other"), sep = "\n")
+```
+
+```{r}
+dates <- seq.Date(from = as.Date("2017-01-01"), to = as.Date("2021-04-01"), by = "month")
+dates <- str_replace(tolower(as.character(format(dates, "%B %Y"))), " ", "-")
+```
+
+```{r}
+urls <- paste0("https://www.fda.gov/medical-devices/510k-clearances/", dates, "-510k-clearances")
+```
+
+```{r}
+table_510_month <- function(html) {
+  
+  raw_html <- read_html(html) %>% 
+    html_nodes(".col-md-8.col-md-push-2") %>% 
+    html_text(trim = TRUE) %>% 
+    strsplit("DEVICE:") 
+
+  html_df <- as.data.frame(raw_html[[1]])
+
+  colnames(html_df) <- c("full_desc")
+
+  table_510 <- html_df %>% 
+    separate(full_desc, into = c("device_company", "other"), sep = "510") %>% 
+    separate(device_company, into = c("device", "company"), sep = "\n") %>% 
+    separate(other, into = c("info", "date"), sep = "SE DECISION MADE:") %>% 
+    separate(date, into = c("date", "other"), sep = "\n") %>% 
+    filter(str_detect(device, fixed("mask", ignore_case = TRUE)) |
+           str_detect(device, fixed("respirator", ignore_case = TRUE)) | 
+           str_detect(device, fixed("filtering", ignore_case = TRUE)) | 
+             str_detect(device, fixed("ventilator", ignore_case = TRUE)))
+  
+  return(table_510)
+  
+    
+}
+```
+
+```{r}
+rec_510K <- urls %>% 
+  map_df(table_510_month)
+```
+
+```{r}
+saveRDS(niosh_all, box_here("niosh_all.RDS"))
+saveRDS(surgical_eua, box_here("fda_eua.RDS"))
+saveRDS(rec_510K, box_here("rel_510k.RDS"))
+```
+
+
+```{r}
+reg_data <- niosh_all %>% 
+  mutate(df = "niosh_all") %>% 
+  bind_rows(rec_510K %>% mutate(df = "fda_510k")) %>% 
+  bind_rows(surgical_eua %>% mutate(df = "fda_eua"))
+```
+
+```{r}
+fda_recent <- rec_510K %>% 
+  mutate(other = str_replace_all(str_trim(other), "  ", " "), 
+         company = str_replace_all(company, "&", "And")) %>% 
+  mutate(other = str_replace_all(str_trim(other), " ", ", ")) %>% 
+  mutate(address = paste(str_trim(company), other, sep= ", "))
+    
+```
+
+
+
+```{r, echo = FALSE, Include = FALSE}
+api_key <- c("AIzaSyA1pwzK3BaX7_um-_TUrS7aGfCHQvp68b8")
+```
+
+We define our function, which will take an address as an input and output a latitude and longitude result. 
+
+```{r}
+geocodeAddress <- function(address) {
+  require(RJSONIO)
+  url <- "https://maps.googleapis.com/maps/api/geocode/json?address="
+  url <- URLencode(paste(url, address, sep = ""))
+  url <- URLencode(paste(url, "&key=", api_key, sep = ""))
+  x <- fromJSON(url, simplify = FALSE)
+  print(x$status)
+  
+  if (x$status == "OK") {
+    n <- length(x$results[[1]]$address_components)
+    
+    for (j in 1:n) {
+                      # extract type of "address_components"
+                      type <- x$results[[1]]$address_components[[j]]$types[[1]]
+                      # extract city and country
+                      if (type == "country") {
+                            country <- x$results[[1]]$address_components[[j]]$long_name}
+                }
+    
+    out <- c(x$results[[1]]$geometry$location$lng,
+             x$results[[1]]$geometry$location$lat,
+             x$results[[1]]$formatted_address, 
+             country)
+  } else {
+    out <- NA
+  }
+  Sys.sleep(0.2)  # API only allows 5 requests per second
+  out
+}
+```
+
+
+```{r, include = FALSE}
+for(i in 1:nrow(fda_recent))
+{
+  result <- geocodeAddress(fda_recent$address[i])
+  fda_recent$long[i] <- as.numeric(result[1])
+  fda_recent$lat[i] <- as.numeric(result[2])
+  fda_recent$form_address[i] <- as.character(result[3])
+  fda_recent$country[i] <- as.character(result[4])
+
+}
+```
+
+
+```{r, eval = FALSE}
+fda_recent_struc <- fda_recent %>% 
+  mutate(country = case_when(
+    is.na(country) ~ "China", 
+    str_detect(company, "POM") ~ "United States",
+    TRUE ~ country
+  ))
+```
+
+
+```{r}
+saveRDS(fda_recent_struc, box_here("fda_510_2017.RDS"))
+```
+```{r}
+fda_510_clean <- fda_510_all %>% 
+  rename(device = DEVICENAME) %>% 
+  product_org() %>% 
+  filter(beauty_other != TRUE, 
+         thermoplastic != TRUE )
+```
+
+
+```{r, include = FALSE}
+for(i in 1:nrow(fda_510_clean))
+{
+  result <- geocodeAddress(fda_510_clean$address[i])
+  fda_510_clean$long[i] <- as.numeric(result[1])
+  fda_510_clean$lat[i] <- as.numeric(result[2])
+  fda_510_clean$form_address[i] <- as.character(result[3])
+  fda_510_clean$country[i] <- as.character(result[4])
+
+}
+```
+
+
+```{r}
+fda_510_clean %>% 
+  filter(is.na(country)) %>% 
+  view()
+```
+
+
+```{r}
+write_csv(fda_510k_geocode, box_here("fda_510.csv"))
+```
+
+
+
+```{r}
+graph <- masks_510K %>% 
+  mutate(date = dmy(DECISIONDATE)) %>% 
+  mutate(month = month(date, label=TRUE), year = year(date)) %>% 
+  group_by(month, year) %>% 
+  count() %>% 
+  mutate(date = paste(month, year, sep = " ")) %>% 
+  mutate(date_1 =  make_date(year = year, month = month, day = 01)) %>% 
+  arrange(date_1) %>% 
+  ungroup() %>% 
+  mutate(total = cumsum(n))
+```
+
+```{r}
+fda_fig <- tot_graph %>% 
+  filter(!is.na(date_1)) %>% 
+  ggplot(aes(reorder(date, date_1), n)) +
+  geom_col(fill = "#7FC97F", color = "Black" ) + 
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=60, hjust=1)) +
+  labs(x = "", y = "Monthly FDA 510K Clearance Decisions", title = "Monthly FDA 510K Clearance Decisions for Devices that Reference \"Masks\"")
+```
+

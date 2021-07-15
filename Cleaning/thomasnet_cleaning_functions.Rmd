@@ -170,6 +170,7 @@ prod_struc1 <- function(data) {
   mutate(resp = case_when(
     str_detect(desc, fixed("respirator", ignore_case = TRUE)) | 
       str_detect(desc, fixed("N95", ignore_case = TRUE)) | 
+      str_detect(desc, fixed("KN-95", ignore_case = TRUE)) |
       (str_detect(desc, fixed("cleanroom", ignore_case = TRUE)) & (str_detect(desc, fixed("respirator", ignore_case = TRUE)) | str_detect(desc, fixed("mask", ignore_case = TRUE)))) ~ "Respirator"),
     face_mask = case_when(
       str_detect(desc, fixed("medical", ignore_case = TRUE)) |
@@ -186,6 +187,8 @@ prod_struc1 <- function(data) {
         str_detect(desc, fixed("non-woven", ignore_case = FALSE)) |
         str_detect(desc, fixed("3M", ignore_case = FALSE)) |
         str_detect(desc, fixed("3-ply", ignore_case = FALSE)) |
+        str_detect(desc, fixed("4-ply", ignore_case = FALSE)) |
+        str_detect(desc, fixed("5-ply", ignore_case = FALSE)) |
         str_detect(desc, fixed("non-woven", ignore_case = FALSE)) ~ "Face Mask")
   ) 
     
@@ -271,6 +274,7 @@ fda_specs_old <- function(data) {
         str_detect(desc, "NIOSH") |
         str_detect(desc, "801") |
         str_detect(desc, "KN95") |
+        str_detect(desc, "KN-95") |
         str_detect(desc, fixed("Brands+ 3M", ignore_case = FALSE)) |
         str_detect(desc, fixed("3-ply", ignore_case = FALSE)) ~ "Affirmatively",
       str_detect(desc, fixed("medical", ignore_case = TRUE)) |
@@ -297,6 +301,7 @@ fda_specs <- function(data) {
         str_detect(desc, "NIOSH") |
         str_detect(desc, "801") |
         str_detect(desc, "KN95") |
+        str_detect(desc, "KN-95") |
         str_detect(desc, fixed("Brands+ 3M", ignore_case = FALSE))  ~ "Affirmatively",
         str_detect(desc, fixed("3-ply", ignore_case = TRUE)) | 
         (str_detect(desc, fixed("cleanroom", ignore_case = TRUE)) & (str_detect(desc, fixed("respirator", ignore_case = TRUE)) | str_detect(desc, fixed("mask", ignore_case = TRUE)))) |

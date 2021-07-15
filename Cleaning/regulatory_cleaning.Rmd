@@ -1,0 +1,757 @@
+---
+title: "FDA Cleaning"
+author: "Nikhil Kalathil"
+date: "5/27/2021"
+output: html_document
+---
+```{r, include = FALSE}
+library(tidyverse)
+library(rvest)
+library(rebus)
+library(lubridate)
+library(here)
+library(ggthemes)
+library(tm)
+library(RColorBrewer)
+library(ggnewscale)
+library(ggridges)
+library(ggrepel)
+```
+
+```{r}
+
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/FDA/"
+
+```
+
+```{r}
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+```
+
+
+This document provides a procedure to clean and organize previously webscraped NIOSH data, as well as FDA 510K clearance data from 1996 to the present. We download data from 1996-Present (April, 2021) from the FDA: https://www.fda.gov/medical-devices/510k-clearances/downloadable-510k-files, filter the data for products of interest (mask and respirator FDA 510K product codes, and the words: "mask", "respirator", "filtering", and "ventilator")
+
+```{r}
+fda510_all <- read_csv(box_here("fda_510_96_present.csv")) 
+```
+```{r}
+fda510_focus <- fda510_all %>% 
+  filter(PRODUCTCODE %in% c("FXX", "OXZ", "MSH", "ONT") | str_detect(DEVICENAME, fixed("mask", ignore_case = TRUE)) |
+           str_detect(DEVICENAME, fixed("respirator", ignore_case = TRUE)) | 
+           str_detect(DEVICENAME, fixed("filtering", ignore_case = TRUE)) | 
+             str_detect(DEVICENAME, fixed("ventilator", ignore_case = TRUE)))
+```
+
+
+```{r}
+fda_510_all <- fda510_focus %>%
+  mutate(APPLICANT = str_replace_all(APPLICANT, "&", "And"), 
+          STREET1 = gsub("#.*","",STREET1)) %>%  
+  mutate(address = paste(APPLICANT, STREET1, STREET2, CITY, STATE, COUNTRY_CODE, ZIP, sep = ", ")) %>% 
+  mutate(address = case_when(
+    str_detect(APPLICANT, "PURITAN BENNETT CORP.") ~ paste(STREET1, STREET2, CITY, STATE, COUNTRY_CODE, ZIP, sep = ", "), 
+    TRUE ~ address
+  )) %>% 
+   mutate(address = str_replace_all(address, ",,", ","), 
+         address = str_replace_all(address, " NA,", ""))
+```
+
+
+We then use a combination of product codes and device name keyword searches to categorize specific products of interest: Oxygen, CPAP/Sleep/Nasal, Vented and Non-Vented, or CPR Masks, or  Nebulizers (refered to as "Technical Masks"); Ventilator or Respiratory Systems; Surgical Face Masks; Surgical Respirators; and Tests, Panels, Reagents, or other Diagnostic Kits. 
+
+We specify these products because they represent COVID-19 related medical supplies, or products that share relevant properties with COVID-19 related medical supplies
+
+```{r}
+product_org <- function(data) {
+  data %>% 
+    mutate(beauty_other = PRODUCTCODE %in% c("OHS", "CAF", "EBI", "LPL") | 
+             str_detect(device, fixed("wrinkle", ignore_case = TRUE)) | 
+           str_detect(device, fixed("acne", ignore_case = TRUE)) | 
+           str_detect(device, fixed("beauty", ignore_case = TRUE)) | 
+           str_detect(device, fixed("light", ignore_case = TRUE)) | 
+           str_detect(device, fixed("belt", ignore_case = TRUE)) | 
+             str_detect(device, fixed("masking", ignore_case = TRUE)) | 
+             str_detect(device, fixed("masker", ignore_case = TRUE)), 
+         software = str_detect(device, fixed("software", ignore_case = TRUE)), 
+         nasal = PRODUCTCODE %in% c("CBN", "BYF", "CAF", "CBP", "CCQ", "OBN") | 
+           str_detect(device, fixed("pillow", ignore_case = TRUE)) | 
+           str_detect(device, fixed("sleep", ignore_case = TRUE)) |
+           str_detect(device, fixed("nasal", ignore_case = TRUE)) | 
+           str_detect(device, "PAP") | 
+           str_detect(device, fixed("vented", ignore_case = TRUE)) | 
+           str_detect(device, "CPR") | 
+           str_detect(device, fixed("performax", ignore_case = TRUE)) | 
+           str_detect(device, fixed("hospital", ignore_case = TRUE)) | 
+           str_detect(device, fixed("respcare", ignore_case = TRUE)) |
+           str_detect(device, fixed("gel", ignore_case = TRUE)) | 
+           str_detect(device, fixed("mirage", ignore_case = TRUE)) | 
+           str_detect(device, fixed("capno", ignore_case = TRUE)) | 
+           str_detect(device, fixed("panoramic", ignore_case = TRUE)) | 
+           str_detect(device, fixed("rede mask", ignore_case = TRUE)) | 
+           (str_detect(device, fixed("full face mask", ignore_case = TRUE)) & 
+              str_detect(device, fixed("reusable", ignore_case = TRUE), negate = TRUE)) | 
+            (str_detect(device, fixed("model", ignore_case = TRUE)) & 
+              str_detect(device, fixed("white knight", ignore_case = TRUE), negate = TRUE) & str_detect(device, fixed("imask", ignore_case = TRUE))), 
+         test = str_detect(device, fixed("panel", ignore_case = TRUE)) | 
+           str_detect(device, fixed("test", ignore_case = TRUE)) | 
+           str_detect(device, fixed("gating", ignore_case = TRUE)) | 
+           str_detect(device, fixed("screening", ignore_case = TRUE)), 
+         monitor = str_detect(device, fixed("monitor", ignore_case = TRUE)), 
+         module = str_detect(device, fixed("module", ignore_case = TRUE)), 
+         respiratory = PRODUCTCODE %in% c("BZD", "CBK", "BTM", "BWF", "BYT", "MNT") | (!PRODUCTCODE %in% c("FXX") & str_detect(device, fixed("respiratory", ignore_case = TRUE))) | 
+           str_detect(device, fixed("ventilator", ignore_case = TRUE)), 
+         thermoplastic = PRODUCTCODE %in% c("BYP", "DZB") | 
+           str_detect(device, fixed("thermoplastic", ignore_case = TRUE)) | 
+           str_detect(device, fixed("reverse pull", ignore_case = TRUE)), 
+         surgical_medical = PRODUCTCODE %in% c("FXX", "OXZ") | 
+           str_detect(device, fixed("surgical", ignore_case = TRUE)) | 
+           str_detect(device, fixed("medical", ignore_case = TRUE)) |
+           str_detect(device, fixed("procedure", ignore_case = TRUE)) | 
+           str_detect(device, fixed("disposable", ignore_case = TRUE)) | 
+           str_detect(device, fixed("face mask", ignore_case = TRUE)), 
+         n95 = PRODUCTCODE %in% c("MSH", "ONT") | 
+           str_detect(device, "N95")
+         ) %>% 
+  mutate(product = case_when(
+    surgical_medical == TRUE ~ "Surgical Face Mask", 
+  )) %>% 
+    mutate(product= case_when( 
+           n95 == TRUE ~ "Surgical Respirator", 
+           TRUE ~ product)) %>% 
+  mutate(product = case_when(
+    beauty_other == TRUE ~ "Hearing, Beauty, or Body Related Product", 
+    nasal == TRUE ~ "Oxygen, CPAP/Sleep/Nasal, Nebulizer, Vented and Non-Vented, or CPR Mask",
+    thermoplastic == TRUE ~ "Thermoplastic or Correctional Mask",
+    respiratory == TRUE ~ "Ventilatory or Respiratory System", 
+    TRUE ~ product)
+  ) %>% 
+  mutate(product = case_when(
+    monitor == TRUE ~ "Monitor", 
+    test == TRUE ~ "Test, Panel, Reagent, or other Diagnostic Kit", 
+    module == TRUE ~ "External Module",
+    TRUE ~ product)) %>% 
+  mutate(product = case_when(
+    software == TRUE ~ "Software Product", 
+    TRUE ~ product
+  ))
+}
+```
+
+
+```{r}
+fda_510_all %>% 
+  rename(device = DEVICENAME) %>% 
+  product_org() %>% 
+  filter(is.na(product)) %>% 
+  select(APPLICANT, PRODUCTCODE, device)
+```
+
+```{r}
+fda_struc <- fda510_focus %>% 
+  rename(device = DEVICENAME) %>% 
+  product_org() 
+```
+
+```{r}
+rel_struc <- fda_struc %>% 
+  filter(product %in% c("Ventilatory or Respiratory System", "Oxygen, CPAP/Sleep/Nasal, Nebulizer, Vented and Non-Vented, or CPR Mask", "Surgical Respirator", "Surgical Face Mask", "Test, Panel, Reagent, or other Diagnostic Kit")) %>% 
+  mutate(product = case_when(
+    str_detect(product, "Nebulizer") ~ "Technical Mask", 
+    TRUE ~ product
+  )) %>% 
+  mutate(ddate = mdy(DECISIONDATE))
+```
+
+```{r}
+fda_formatch <- rel_struc %>% 
+  filter(year(ddate) > 2017)
+```
+
+```{r}
+saveRDS(fda_formatch, box_here("fda_formatch.RDS"))
+```
+
+
+```{r}
+tot_graph <- rel_struc %>% 
+  mutate(date = mdy(DECISIONDATE)) %>% 
+  mutate(month = month(date, label=TRUE), year = year(date)) %>% 
+  group_by(month, year, product) %>% 
+  count() %>% 
+  mutate(date = paste(month, year, sep = " ")) %>% 
+  mutate(date_1 =  make_date(year = year, month = month, day = 01)) %>% 
+  arrange(date_1) %>% 
+  ungroup() %>% 
+  mutate(total = cumsum(n))
+```
+
+```{r}
+my_col <- c(brewer.pal(5, "Set3")[1], brewer.pal(5, "Set2")[2], brewer.pal(7, "Set2")[7], brewer.pal(5, "Set2")[3], brewer.pal(8, "Set2")[8])
+```
+
+```{r}
+fig_1 <- tot_graph %>% 
+  group_by(product) %>% 
+  count() %>% 
+  ggplot(aes(reorder(product, n), n, group = product)) + 
+  geom_col(aes(fill = reorder(product, -n)), position = "stack", color = "Black", show.legend = FALSE) + 
+  theme_bw() + 
+  coord_flip() + 
+  scale_fill_manual(values = my_col) + 
+  labs(title = "Total FDA510K Clearances for Potentially COVID-19 Relevant Products", subtitle = "1996-Present", x = "", y = "")+ 
+  theme(plot.title = element_text(size = 18),
+        axis.text = element_text(size = 12))
+
+fig_1
+```
+
+We now split our data into two categories around 2009 (the last pandemic like event with H1N1) to define: current and legacy products. 
+
+```{r}
+legacy <- c(brewer.pal(9, "Greys")[4], brewer.pal(9, "Greys")[7])
+```
+
+
+```{r}
+fig_2 <- tot_graph %>% 
+  mutate(legacy = case_when(
+    year >= 2010 ~ "Current Products", 
+    year < 2010 ~ "Legacy Products"
+  )) %>% 
+  group_by(product, legacy) %>% 
+  count() %>% 
+    mutate(lab1 = case_when(
+    str_detect(product, "Ventilatory") & legacy == "Legacy Products" ~ "Legacy Products"
+  )) %>% 
+  mutate(lab2 = case_when(
+    str_detect(product, "Surgical Face") & legacy == "Current Products" ~ "Current Products"
+  )) %>% 
+  ggplot(aes(reorder(product, n), n, group = legacy)) + 
+  geom_col(aes(fill = reorder(product, -n)), position = "stack", color = "Black", show.legend = FALSE) + 
+  scale_fill_manual(values = my_col) + 
+  new_scale_fill() + 
+  geom_col(aes(fill = legacy), alpha = 0.5, position = "stack", color = "Black", show.legend = FALSE) + 
+  geom_text(y = 50, aes(label = lab1), size = 8) +
+  geom_text(aes(label = lab2), size = 8) +
+  theme_bw() + 
+  coord_flip() + 
+  scale_fill_manual(values = legacy) + 
+  labs(title = "Total FDA510K Clearances for Specific Products", subtitle = "1996-Present, Legacy Break Year = 2009", x = "", y = "") + 
+    theme(plot.title = element_text(size = 18),
+        axis.text = element_text(size = 12))  
+
+fig_2
+```
+
+We see that ventliator products are mostly legacy products, while surgical face masks are mostly current products. 
+
+```{r}
+tot_graph %>% 
+  group_by(product) %>% 
+  summarize(max(date_1), n = n())
+```
+```{r}
+fig_3 <- tot_graph %>% 
+  mutate(legacy = case_when(
+    year >= 2018 ~ "Current Products", 
+    year < 2018 ~ "Legacy Products"
+  )) %>% 
+  group_by(product, legacy) %>% 
+  count() %>% 
+    mutate(lab1 = case_when(
+    str_detect(product, "Ventilatory") & legacy == "Legacy Products" ~ "Legacy Products (Before 2018)"
+  )) %>% 
+  mutate(lab2 = case_when(
+    str_detect(product, "Surgical Face") & legacy == "Current Products" ~ "Current Products"
+  )) %>% 
+ggplot(aes(reorder(product, n), n, group = legacy)) +
+  geom_col(aes(fill = reorder(product, -n), label = legacy), position = "stack", color = "Black", show.legend = FALSE) + 
+  scale_fill_manual(values = my_col) + 
+  new_scale_fill() + 
+  geom_col(aes(fill = legacy), alpha = 0.5, position = "stack", color = "Black", show.legend = FALSE) + 
+  geom_text(y = 80, aes(label = lab1), size = 8) +
+  theme_bw() + 
+  coord_flip() + 
+  scale_fill_manual(values = legacy) + 
+  labs(title = "Total FDA510K Clearances for Specific Products", subtitle = "1996-Present, Legacy Break Year = 2018", x = "", y = "") + 
+    theme(plot.title = element_text(size = 18),
+        axis.text = element_text(size = 12))  
+```
+
+
+```{r}
+fig_3 <- tot_graph %>% 
+  mutate(legacy = case_when(
+    year >= 2018 ~ "Current Products", 
+    year < 2018 ~ "Legacy Products"
+  )) %>% 
+  group_by(product, legacy) %>% 
+  summarize(last_date = paste(month(max(date_1), label=TRUE), year(max(date_1)), sep = ", "), n = n()) %>% 
+    mutate(max_n = case_when(
+      legacy == "Current Products" ~ max(n)), 
+      lab1 = case_when(
+    str_detect(product, "Ventilatory") & legacy == "Legacy Products" ~ "Legacy Products (Before 2018)"
+  )) %>% 
+  mutate(lab2 = case_when(
+    str_detect(product, "Surgical Face") & legacy == "Current Products" ~ "Current Products"
+  ), 
+  last_date = case_when(
+    legacy == "Current Products" ~ last_date
+  )) %>% 
+ggplot(aes(reorder(product, n), n, group = legacy)) +
+  geom_col(aes(fill = reorder(product, -n), label = legacy), position = "stack", color = "Black", show.legend = FALSE) + 
+  scale_fill_manual(values = my_col) + 
+  new_scale_fill() + 
+  geom_col(aes(fill = legacy), alpha = 0.5, position = "stack", color = "Black", show.legend = FALSE) + 
+  geom_text(y = 80, aes(label = lab1), size = 8) +
+  geom_text(aes(label = lab2), size = 8) +
+  theme_bw() + 
+  coord_flip() + 
+  scale_fill_manual(values = legacy) + 
+  labs(title = "Total FDA510K Clearances for Specific Products", subtitle = "1996-Present, Legacy Break Year = 2018", x = "", y = "") + 
+    theme(plot.title = element_text(size = 18),
+        axis.text = element_text(size = 12))  
+```
+
+We now focus on the period between 2019 and the present to capture new FDA 510K clearances and during the pandemic. We focus primarily on Surgical Face Masks, Ventilators, and tests. 
+
+```{r}
+my_col2 <- c(brewer.pal(5, "Set2")[2],  brewer.pal(8, "Set2")[8], brewer.pal(5, "Set3")[1])
+```
+
+
+```{r}
+fda_fig1 <- tot_graph %>% 
+  filter(year > 2019, product %in% c("Ventilatory or Respiratory System", "Surgical Face Mask", "Test, Panel, Reagent, or other Diagnostic Kit")) %>% 
+  ggplot(aes(reorder(date, date_1), n, group = product)) +
+  geom_col(aes(fill = product), position = "stack", color = "Black") + 
+  theme_bw() +
+  scale_fill_manual(values = my_col2) +
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "Monthly FDA 510K Clearance Decisions", title = "Monthly FDA 510K Clearance Decisions for Select COVID-19 Relevant Products", fill = "") + 
+      theme(plot.title = element_text(size = 18),
+        axis.text = element_text(size = 12))  
+
+
+fda_fig1
+```
+
+```{r}
+country_colors <- c(brewer.pal(9, "OrRd")[7], brewer.pal(7, "Set2")[7], brewer.pal(7, "Set2")[1], brewer.pal(9, "Set1")[2])
+```
+
+
+```{r}
+country_graph1 <- rel_struc %>% 
+  filter(product %in% "Surgical Face Mask") %>% 
+  mutate(date = mdy(DECISIONDATE)) %>% 
+  mutate(month = month(date, label=TRUE), year = year(date)) %>% 
+  group_by(month, year, COUNTRY_CODE) %>% 
+  count() %>% 
+  mutate(date = paste(month, year, sep = " ")) %>% 
+  mutate(date_1 =  make_date(year = year, month = month, day = 01)) %>% 
+  arrange(date_1)%>% 
+  filter(year > 2019) %>% 
+  ggplot(aes(reorder(date, date_1), n, group = COUNTRY_CODE)) + 
+  geom_col(aes(fill = COUNTRY_CODE), position = "stack", color = "Black") +
+  scale_fill_manual(values = country_colors) + 
+  theme_bw() + 
+    theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "Monthly FDA 510K Clearance Decisions", title = "Monthly FDA 510K Clearance Decisions for Surgical Face Masks", subtitle = "By Country", fill = "Country")
+
+country_graph
+  
+```
+
+```{r}
+country_graph2 <- rel_struc %>% 
+  filter(product %in% "Surgical Face Mask") %>% 
+  mutate(date = mdy(DATERECEIVED)) %>% 
+  mutate(month = month(date, label=TRUE), year = year(date)) %>% 
+  group_by(month, year, COUNTRY_CODE) %>% 
+  count() %>% 
+  mutate(date = paste(month, year, sep = " ")) %>% 
+  mutate(date_1 =  make_date(year = year, month = month, day = 01)) %>% 
+  arrange(date_1)%>% 
+  filter(year > 2019) %>% 
+  ggplot(aes(reorder(date, date_1), n, group = COUNTRY_CODE)) + 
+  geom_col(aes(fill = COUNTRY_CODE), position = "stack", color = "Black") +
+  scale_fill_manual(values = country_colors) + 
+  theme_bw() + 
+    theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "Monthly FDA 510K Clearance Decisions", title = "Monthly FDA 510K Clearance Decisions for Surgical Face Masks", subtitle = "By Country", fill = "Country")
+
+country_graph2
+```
+
+
+```{r}
+rel_struc %>% 
+  filter(product %in% "Surgical Face Mask") %>% 
+  mutate(date = mdy(DECISIONDATE)) %>% 
+  mutate(month = month(date, label=TRUE), year = year(date)) %>% 
+  filter(year > 2019) %>% 
+  group_by(month, year, COUNTRY_CODE) %>% 
+  count() %>% 
+  group_by(COUNTRY_CODE) %>%
+  summarize(total = sum(n))
+```
+
+```{r}
+rel_struc %>% 
+  filter(product %in% "Surgical Face Mask") %>% 
+  mutate(ddate = mdy(DECISIONDATE),
+         rdate = mdy(DATERECEIVED)) %>% 
+  mutate(delay = difftime(ddate, rdate, units = "days")) %>% 
+  filter(year(rdate) > 2019) %>%
+  ggplot(aes(rdate, delay, group = COUNTRY_CODE)) + 
+  geom_point(shape = 21, aes(fill = COUNTRY_CODE)) +
+  scale_fill_manual(values = country_colors) + 
+  theme_bw() 
+  
+```
+
+```{r}
+rel_struc %>% 
+  filter(product %in% "Surgical Face Mask") %>% 
+  mutate(ddate = mdy(DECISIONDATE),
+         rdate = mdy(DATERECEIVED)) %>% 
+  mutate(delay = difftime(ddate, rdate, units = "days")) %>% 
+  filter(year(rdate) > 2019) %>%
+  ggplot(aes(ddate, delay, group = COUNTRY_CODE)) + 
+  geom_point(shape = 21, aes(fill = COUNTRY_CODE)) +
+  scale_fill_manual(values = country_colors) + 
+  theme_bw() 
+```
+
+
+
+```{r}
+rel_struc %>% 
+  filter(product %in% "Surgical Face Mask", COUNTRY_CODE %in% c("CN", "US")) %>% 
+  mutate(ddate = mdy(DECISIONDATE),
+         rdate = mdy(DATERECEIVED)) %>% 
+  mutate(delay = difftime(ddate, rdate, units = "days")) %>% 
+  mutate(month = month(rdate, label=TRUE), year = year(rdate)) %>% 
+  mutate(date = paste(month, year, sep = " ")) %>% 
+  mutate(date_1 =  make_date(year = year, month = month, day = 01)) %>% 
+  arrange(date_1)%>% 
+  filter(year > 2019) %>% 
+  ggplot(aes(date_1, delay, group = date_1)) +
+  geom_boxplot(aes(fill = COUNTRY_CODE)) + 
+  geom_point(shape = 21, aes(fill = COUNTRY_CODE)) + 
+  scale_fill_manual(values = country_colors) + 
+  theme_bw() +
+  facet_wrap(~COUNTRY_CODE) + 
+  labs(title = "Days Taken to Approve FDA 510k Application for Surgical Face Masks", subtitle = "by Country", x = "Date Application was Received", y = "Days till Decision")
+```
+
+```{r}
+model_date <- rel_struc %>% 
+  filter(product %in% "Surgical Face Mask", COUNTRY_CODE %in% c("CN", "US")) %>% 
+  mutate(ddate = mdy(DECISIONDATE),
+         rdate = mdy(DATERECEIVED)) %>% 
+  mutate(country = case_when(
+    COUNTRY_CODE == "US" ~ 0, 
+    COUNTRY_CODE == "CN" ~ 1
+  )) %>% 
+  mutate(delay = as.double(difftime(ddate, rdate, units = "days"))) %>% 
+  mutate(month = month(rdate, label=TRUE), year = year(rdate)) %>% 
+  mutate(date = paste(month, year, sep = " ")) %>% 
+  mutate(date_1 =  make_date(year = year, month = month, day = 01)) %>% 
+  filter(year > 2019)
+```
+
+```{r}
+lm1 <- lm(delay ~ country + factor(date_1), data = model_date)
+```
+
+```{r}
+library(jtools)
+summ(lm1)
+```
+
+```{r}
+rel_struc %>% 
+  filter(product %in% "Surgical Face Mask", COUNTRY_CODE %in% c("CN", "US")) %>% 
+  mutate(ddate = mdy(DECISIONDATE),
+         rdate = mdy(DATERECEIVED)) %>% 
+  mutate(delay = difftime(ddate, rdate, units = "days")) %>% 
+  mutate(month = month(rdate, label=TRUE), year = year(rdate)) %>% 
+  mutate(date = paste(month, year, sep = " ")) %>% 
+  mutate(date_1 =  make_date(year = year, month = month, day = 01)) %>% 
+  arrange(date_1)%>% 
+  filter(year > 2019) %>% 
+  write_csv(box_here("recent_fda.csv"))
+```
+
+
+## NIOSH
+
+```{r}
+niosh_all <- readRDS(box_here("niosh_webscraped.RDS"))
+```
+
+We start by cleaning the company info column, using the "external icon" identifier as a separating point and joining the product information with notes about whether or not it is a private label product (and who the private label is for). 
+
+```{r}
+niosh_clean <- niosh_all %>% 
+  mutate(dist_auth = case_when(
+    str_detect(comp_info, fixed("distribution", ignore_case = TRUE)) ~ 1, 
+    TRUE ~ 0
+  )) %>% 
+  separate(comp_info, into = c("company", "contact_info"), sep = "external icon") %>% 
+  mutate(private_label = str_extract(contact_info, "\\[.+?\\]")) %>% 
+  mutate(private_label = str_replace_all(private_label, "\\[", ""), 
+         private_label = str_replace_all(private_label, "\\]", "")) %>% 
+  mutate(obsolete = str_detect(model_no, fixed("obsolete", ignore_case = TRUE))|
+           str_detect(approval_num, "OBSOLETE")) %>% 
+  mutate(contact_info = str_trim(gsub("\\[[^][]*]", "", contact_info))) %>% 
+  filter(obsolete != TRUE) %>% 
+  mutate(contact_info = str_trim(gsub("\\[[^][]*]", "", contact_info))) %>% 
+  mutate(company = case_when(
+    str_detect(company, "Air Filtration") ~ "Air Filtration Solutions, Ltd.", 
+    TRUE ~ company), 
+    company = case_when(
+      str_detect(company, "Alpha Pro") ~ "Alpha Pro-Tech", 
+      TRUE ~ company), 
+    company = case_when(
+      str_detect(company, "Gerson") ~ "Louis M. Gerson Company, Inc.", 
+      TRUE ~ company
+    ), 
+    company = case_when(
+      str_detect(company, "Package") ~ "San M Package Company, Ltd.", 
+      TRUE ~ company
+    ) ,
+    company = case_when(
+      str_detect(company, "Venus") ~ "Venus Safety & Health", 
+      TRUE ~ company
+    ), 
+    company = case_when(
+      str_detect(company, "Xiantao Zhongyi") ~ "Xiantao Zhongyi Safety Protection Products", 
+      TRUE ~ company
+    ), 
+    company = case_when(
+      str_detect(company, "Honeywell") ~ "Honeywell International Inc.",
+      TRUE ~ company))
+```
+
+
+
+## match aproval numbers to dates
+
+To start organizing by approval number, we begin by scraping the web for the corresponding date for each approval number. We have to webscrape this information. 
+
+```{r}
+
+base_url <- "https://wwwn.cdc.gov/NIOSH-CEL/ApprovalDetails?schedule=84A&approvalNum="
+
+make_url <- function(x) {
+  URLencode(paste(base_url, x, sep = ""))
+}
+```
+
+
+
+```{r}
+niosh_appr <- niosh_clean %>% 
+  ungroup() %>% 
+  distinct(approval_num, appr_num) %>% 
+  mutate(apprv_url = map(appr_num, make_url)) %>% 
+  arrange(appr_num)
+```
+
+```{r}
+get_date <- function(url) { 
+  table <- tryCatch(read_html(url) %>% 
+                     html_table(), error = function(e){NA})
+  
+  if(is.na(table[1])){
+     return(NA)
+  }
+  
+  else {
+    x1 <- table[3] 
+    x <- x1[[1]] %>% 
+      filter(X1 == "Approval Date") %>% 
+      select(X2) 
+  return(x[1,])
+  }
+ }
+```
+
+
+```{r}
+niosh_appr_date <- niosh_appr %>% 
+  mutate(appr_date = map(apprv_url, get_date))
+```
+
+
+```{r , eval = FALSE}
+for(i in 1:nrow(niosh_appr)) {
+  print(niosh_appr$appr_num[i])
+  niosh_appr$appr_date[i] <- get_date(niosh_appr$apprv_url[i] %>% unlist())
+}
+```
+
+```{r}
+niosh_appr_date %>% 
+  saveRDS(box_here("appr_dates.RDS"))
+```
+
+
+## GEOCODING FOR COUNTRIES
+
+We now use Google's geocoding service to identify the country of origin for each company. 
+
+```{r, echo = FALSE, Include = FALSE}
+api_key <- c("YOUR_API_KEY")
+```
+
+We define our function, which will take an address as an input and output a latitude and longitude result. 
+
+```{r}
+geocodeAddress <- function(address) {
+  require(RJSONIO)
+  url <- "https://maps.googleapis.com/maps/api/geocode/json?address="
+  url <- URLencode(paste(url, address, sep = ""))
+  url <- URLencode(paste(url, "&key=", api_key, sep = ""))
+  x <- fromJSON(url, simplify = FALSE)
+  print(x$status)
+  if (x$status == "OK") {
+    out <- c(x$results[[1]]$geometry$location$lng,
+             x$results[[1]]$geometry$location$lat,
+             x$results[[1]]$formatted_address)
+  } else {
+    out <- NA
+  }
+  Sys.sleep(0.2)  # API only allows 5 requests per second
+  out
+}
+```
+
+
+```{r}
+niosh_formaps <- niosh_simp %>% 
+  filter(obsolete != 1 ) %>% 
+  group_by(company, contact_info, private_label, specific_product) %>% 
+  count() 
+```
+
+```{r, include = FALSE}
+for(i in 1:nrow(niosh_formaps))
+{
+  result <- geocodeAddress(niosh_formaps$company[i])
+  niosh_formaps$long[i] <- as.numeric(result[1])
+  niosh_formaps$lat[i] <- as.numeric(result[2])
+  niosh_formaps$form_address[i] <- as.character(result[3])
+
+}
+```
+
+Examining companies that returned 0 results, we manually impute countries for our missing results. 
+
+```{r}
+niosh_country <- niosh_formaps %>% 
+  mutate(country = str_trim(sub('.*\\,', '', form_address))) %>% 
+  mutate(country = case_when(
+    company %in% c("4522915 Canada Inc", "Futuremed Health Care Products LP", "Jarvis Imports 2000, Ltd.") ~ "Canada", 
+    company %in% c("A & Z Pharmaceutical, Inc.", "Aidway Personal Care Product, Inc." ,"Inovel, LLC", "J & A Global Inc.", "Jamestown Distributors", "NafiaS Incorporated", "Raivansa, Inc.", "The Home Depot", "ValuMax International", "United States Mask, LLC") ~ "USA", 
+    company %in% c("Andanda Industry Technology Co., Ltd.", "Chen Wei Safety Corporation", "Danyang Kseibi Tools Company, Ltd." ,"Xiantao Zhongyi Safety Protection Products Company, Ltd.", "Nara Safe, Ltd.") ~ "China", 
+    company %in% c("Chilean IPRO") ~ "Chile", 
+    company %in% c("CIG Safety PTE, Ltd.") ~ "Singapore", 
+    company %in% c("Omikenshi Company", "Shigematsu Works Company, Ltd.", "Shirohato Company, Ltd.", "San M Package Company, Ltd.") ~ "Japan", 
+    company %in% c("Ever Green Company, Ltd. 82-31-425-0596") ~ "South Korea",
+    company %in% c("Sagax Safety Products, LLC") ~ "Panama", 
+    company %in% c("San Huei United Company, Ltd.", "Southern Ace Trading Corporation") ~ "Taiwan", 
+    str_detect(contact_info, "China") ~ "China", 
+    TRUE ~ country))
+```
+
+```{r}
+niosh_country_clean <- niosh_country %>% 
+  mutate(country = case_when(
+    str_detect(country, "Singapore") ~ "Singapore", 
+    str_detect(form_address, "Taiwan") ~ "Taiwan", 
+    str_detect(form_address, "United Arab Emirates") ~ "United Arab Emirates", 
+    str_detect(form_address, "China,") ~ "China", 
+    str_detect(form_address, "Hong Kong") ~ "Hong Kong", 
+    str_detect(form_address, "Japan") ~ "Japan",
+    TRUE ~ country
+  ))
+```
+
+```{r}
+niosh_country_clean %>% group_by(company) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  select(company, country, contact_info,  form_address) %>% 
+  view()
+```
+
+
+```{r}
+niosh_country_clean %>% 
+  saveRDS(box_here("niosh_geocoded.RDS"))
+```
+
+Next, we note that many of the companies in our data are private label companies. As such, we also want to identify the location of the parent company. To accomplish this we want to match parent companies with their address.
+
+```{r}
+niosh_notes <- readRDS(box_here("niosh_notes_webscraped.RDS")) %>%
+  mutate(Company = case_when(
+    str_detect(Company, "Honeywell") ~ "Honeywell International Inc.", 
+    TRUE ~ Company
+  )) %>% 
+  rename(private_label = Notes,
+         private_company_prnt = Company, 
+         prnt_phone = 'Phone Number') %>% 
+  mutate(private_company_prnt = str_replace(private_company_prnt, fixed("Private label of ", ignore_case = TRUE), ""), 
+         private_company_prnt = str_replace(private_company_prnt, "external icon", "")) %>% 
+  group_by(private_label) %>% 
+  select(-c("specific_product")) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  select(-c("tal"))
+```
+
+```{r, include = FALSE}
+for(i in 1:nrow(niosh_notes))
+{
+  result <- geocodeAddress(niosh_notes$private_company_prnt[i])
+  niosh_notes$long[i] <- as.numeric(result[1])
+  niosh_notes$lat[i] <- as.numeric(result[2])
+  niosh_notes$form_address[i] <- as.character(result[3])
+
+}
+```
+
+
+```{r}
+notes_geocoded <- niosh_notes %>% 
+  mutate(label_country = str_trim(sub('.*\\,', '', form_address))) %>% 
+  mutate(label_country = case_when(
+    private_company_prnt %in% c("Shuenn Bao Shing Corporation", "San Huei United Company, Ltd.") | str_detect(form_address, "Taiwan") ~ "Taiwan", 
+    private_company_prnt %in% c("San M Package Company, Ltd.") ~ "Japan", 
+    private_company_prnt %in% c("Shining Star Electronic Technology Co., Ltd.") ~ "China", 
+    TRUE ~ label_country
+  ))
+```
+
+```{r}
+notes_merge <- notes_geocoded %>% 
+  select(private_label, label_country, private_company_prnt)
+```
+
+```{r}
+notes_merge %>% 
+  saveRDS(box_here("niosh_notes.RDS"))
+```
+
+We now have a dataset where each row is an individual company model number or product line. However, NIOSH seems to process applicants in batches (each assigned an approval number). An approval number can apply to multiple companies, with one company being the "lead" and the other companies being private label manufacturers. Thus, organizing our data by approval number seems to be appropriate. 
+

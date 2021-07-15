@@ -17,7 +17,7 @@ knitr::opts_chunk$set(echo = TRUE)
 This document will contain a program to webscrap and format Thomasnet search data. The results of this program are not complete and require additional cleaning/manual data entry, but this program should solve the problem of needing to download large Thomasnet searches. 
 
 ```{r}
-dir <- "C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls/01_11_2021"
+dir <- "C:/Users/surface/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls/07_12_2021"
 ```
 
 
@@ -31,7 +31,7 @@ library(here)
 
 ```{r}
 
-box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls/01_11_2021"
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/Weekly Thomasnet Pulls/07_12_2021"
 
 ```
 
@@ -316,7 +316,7 @@ thomas_fm <- fd %>%
 
 
 ```{r}
-saveRDS(thomas_fm, box_here("/thomas_fm_01112021.RDS"))
+saveRDS(thomas_fm, box_here("/thomas_fm_07122021.RDS"))
 ```
 
 # Respirators 
@@ -405,7 +405,7 @@ thomas_resp <- fd %>%
 
 
 ```{r}
-saveRDS(thomas_resp, box_here("/thomas_resp_01112021.RDS"))
+saveRDS(thomas_resp, box_here("/thomas_resp_07122021.RDS"))
 ```
 
 # Intermediary Products 
@@ -555,11 +555,11 @@ nonwoven_final <- nonwoven_fd %>%
 ```
 
 ```{r}
-save_loc <- paste(dir, box_here("/nonwoven_01112021.RDS"), sep = "")
+save_loc <- paste(dir, box_here("/nonwoven_07122021.RDS"), sep = "")
 ```
 
 ```{r}
-saveRDS(nonwoven_final, box_here("/nonwoven_01112021.RDS"))
+saveRDS(nonwoven_final, box_here("/nonwoven_07122021.RDS"))
 ```
 
 
@@ -635,11 +635,11 @@ nolatex_final <- nolatex_fd%>%
 ```
 
 ```{r}
-save_loc <- paste(dir, box_here("/nolatex_01112021.RDS"), sep = "")
+save_loc <- paste(dir, box_here("/nolatex_07122021.RDS"), sep = "")
 ```
 
 ```{r}
-saveRDS(nolatex_final, box_here("/nolatex_01112021.RDS"))
+saveRDS(nolatex_final, box_here("/nolatex_07122021.RDS"))
 ```
 
 
