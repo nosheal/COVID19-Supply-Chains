@@ -1,0 +1,511 @@
+---
+title: "niosh_webscraping"
+author: "Nikhil Kalathil"
+date: "7/18/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document will contain a program to webscrap and format NIOSH search data. The results of this program are not complete and require additional cleaning/manual data entry, but this program should solve the problem of needing to download the NIOSH database. 
+
+```{r, include = FALSE}
+library(tidyverse)
+library(rvest)
+library(rebus)
+library(lubridate)
+library(here)
+library(ggthemes)
+```
+
+```{r}
+
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/FDA/"
+
+```
+
+```{r}
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+```
+
+# NIOSH 
+
+```{r}
+base_url <- "https://www.cdc.gov/niosh/npptl/topics/respirators/disp_part/"
+```
+```{r}
+get_pages <- function(html){
+  pages <- read_html(html) %>% 
+  html_nodes(".col-md-12") %>% 
+  html_nodes(".card-body.bg-cyan-t") %>% 
+  html_nodes("h4 a") %>% 
+  html_attr("href")
+  
+  return(pages)
+}
+```
+```{r}
+pages <- get_pages("https://www.cdc.gov/niosh/npptl/topics/respirators/disp_part/N95list1.html")
+
+page_paste <- function(x) {
+  paste0(base_url, x)
+}
+```
+
+```{r}
+list_of_pages <- sapply(pages, page_paste)
+```
+```{r}
+get_products <- function(html){
+  niosh_table <- read_html(html) %>% 
+    html_table(fill = true)
+
+
+  return(niosh_table[[1]])
+}
+
+get_notes <- function(html){
+  niosh_table <- read_html(html) %>% 
+    html_table(fill = true)
+  
+  return(niosh_table[[2]])
+}
+
+```
+
+
+```{r}
+niosh_n95<- map_dfr(list_of_pages[1:27], get_products)
+```
+
+```{r}
+colnames(niosh_n95) <-  c("comp_info", "model_no", "approval_num", 
+                              "valve", "donning_proc", "model_2")
+
+
+niosh_n95 <- niosh_n95 %>% 
+  mutate(model_no = case_when(is.na(model_no) ~ model_2, 
+                              TRUE ~ model_no)) %>% 
+  select(-c("model_2"))
+```
+
+```{r}
+expand_models <- function(data) { 
+  data %>%
+    mutate(model_no = str_replace_all(model_no, 
+                                 "\\)", ")\n")) %>% 
+  mutate(model_no = str_trim(model_no)) %>%
+  mutate(model_no = str_replace_all(model_no,
+                                    "/ ", ",")) %>% 
+  mutate(model_no = str_replace_all(model_no, "\n", ",")) %>% 
+  mutate(model_no = str_replace_all(model_no, ",,", ","))
+  
+  
+  }
+```
+
+
+```{r}
+niosh_n95_str <- niosh_n95 %>% 
+  expand_models() %>% 
+  mutate(specific_product = "N95 Respirator")
+```
+
+```{r}
+niosh_n95_full <- separate_rows(niosh_n95_str, 2, sep = ",")
+```
+
+
+```{r}
+n95_notes <- get_notes(list_of_pages[1]) %>% 
+  mutate(specific_product = "N95 Respirator")
+```
+
+```{r}
+get_product_table <- function(html, x) {
+  product_raw <- read_html(html) %>% 
+    html_table(fill = TRUE)
+  
+  product <- product_raw[[x]]
+  return(product)
+}
+```
+
+```{r}
+surgical_n95 <- get_product_table("https://www.cdc.gov/niosh/npptl/topics/respirators/disp_part/respsource3surgicaln95.html", 1) 
+```
+
+```{r}
+colnames(surgical_n95) <- c("comp_info", "model_no", "approval_num", 
+                              "donning_proc", "drop")
+
+surgical_n95_str <- surgical_n95 %>% 
+  filter(str_detect(comp_info, "Private Label", negate = TRUE)) %>% 
+  select(-c("drop")) %>% 
+  expand_models() %>% 
+  mutate(specific_product = "Surgical N95 Respirator")
+```
+
+```{r}
+surgical_n95_full <- separate_rows(surgical_n95_str, 2, sep = ",")
+```
+
+```{r}
+niosh_n99 <- get_product_table("https://www.cdc.gov/niosh/npptl/topics/respirators/disp_part/n99list1.html", 1)
+n99_notes <- get_product_table("https://www.cdc.gov/niosh/npptl/topics/respirators/disp_part/n99list1.html", 2) %>% 
+  mutate(specific_product = "N99 Respirator")
+```
+
+```{r}
+colnames(niosh_n99) <- c("comp_info", "model_no", "approval_num", 
+                              "valve", "donning_proc")
+
+niosh_n99_str <- niosh_n99 %>% 
+  expand_models() %>% 
+  mutate(specific_product = "N99 Respirator")
+```
+
+```{r}
+niosh_n99_full <- separate_rows(niosh_n99_str, 2, sep = ",")
+```
+
+
+```{r}
+niosh_n100 <- get_product_table("https://www.cdc.gov/niosh/npptl/topics/respirators/disp_part/n100list1.html", 1)
+n100_notes <- get_product_table("https://www.cdc.gov/niosh/npptl/topics/respirators/disp_part/n100list1.html", 2) %>% 
+  mutate(specific_product = "N100 Respirator")
+```
+
+```{r}
+colnames(niosh_n100) <- c("comp_info", "model_no", "approval_num", 
+                              "valve", "donning_proc") 
+
+niosh_n100_str <- niosh_n100 %>% 
+  expand_models() %>% 
+  mutate(specific_product = "N100 Respirator")
+```
+
+```{r}
+niosh_n100_full <- separate_rows(niosh_n100_str, 2, sep = ",")
+```
+
+```{r}
+niosh_all <- bind_rows(niosh_n95_full, surgical_n95_full) %>% 
+  bind_rows(niosh_n99_full) %>% 
+  bind_rows(niosh_n100_full)
+
+```
+
+```{r}
+niosh_all <- niosh_all %>% 
+  mutate(approval_num = toupper(approval_num)) %>% 
+  filter(str_detect(approval_num, "BACK TO TOP", negate = TRUE)) 
+```
+
+```{r}
+niosh_notes <- bind_rows(n95_notes, n99_notes) %>% 
+  bind_rows(n100_notes)
+
+saveRDS(niosh_notes, box_here("niosh_notes_webscraped.RDS")) 
+```
+
+```{r}
+saveRDS(niosh_all, box_here("niosh_webscraped.RDS"))
+```
+
+# Clean Entries
+
+```{r}
+niosh_all <- readRDS(box_here("niosh_webscraped.RDS"))
+```
+
+We start by cleaning the company info column, using the "external icon" identifier as a separating point and joining the product information with notes about whether or not it is a private label product (and who the private label is for). 
+
+```{r}
+niosh_clean <- niosh_all %>% 
+  mutate(dist_auth = case_when(
+    str_detect(comp_info, fixed("distribution", ignore_case = TRUE)) ~ 1, 
+    TRUE ~ 0
+  )) %>% 
+  separate(comp_info, into = c("company", "contact_info"), sep = "external icon") %>% 
+  mutate(private_label = str_extract(contact_info, "\\[.+?\\]")) %>% 
+  mutate(private_label = str_replace_all(private_label, "\\[", ""), 
+         private_label = str_replace_all(private_label, "\\]", "")) %>% 
+  mutate(obsolete = str_detect(model_no, fixed("obsolete", ignore_case = TRUE))|
+           str_detect(approval_num, "OBSOLETE")) %>% 
+  mutate(contact_info = str_trim(gsub("\\[[^][]*]", "", contact_info))) %>% 
+  filter(obsolete != TRUE) %>% 
+  mutate(contact_info = str_trim(gsub("\\[[^][]*]", "", contact_info))) %>% 
+  mutate(company = case_when(
+    str_detect(company, "Air Filtration") ~ "Air Filtration Solutions, Ltd.", 
+    TRUE ~ company), 
+    company = case_when(
+      str_detect(company, "Alpha Pro") ~ "Alpha Pro-Tech", 
+      TRUE ~ company), 
+    company = case_when(
+      str_detect(company, "Gerson") ~ "Louis M. Gerson Company, Inc.", 
+      TRUE ~ company
+    ), 
+    company = case_when(
+      str_detect(company, "Package") ~ "San M Package Company, Ltd.", 
+      TRUE ~ company
+    ) ,
+    company = case_when(
+      str_detect(company, "Venus") ~ "Venus Safety & Health", 
+      TRUE ~ company
+    ), 
+    company = case_when(
+      str_detect(company, "Xiantao Zhongyi") ~ "Xiantao Zhongyi Safety Protection Products", 
+      TRUE ~ company
+    ), 
+    company = case_when(
+      str_detect(company, "Honeywell") ~ "Honeywell International",
+      TRUE ~ company))
+```
+
+```{r}
+saveRDS(niosh_clean, box_here("niosh_clean.RDS"))
+```
+
+
+# match aproval numbers to dates
+
+To start organizing by approval number, we begin by scraping the web for the corresponding date for each approval number. We have to webscrape this information. 
+
+```{r}
+
+base_url <- "https://wwwn.cdc.gov/NIOSH-CEL/ApprovalDetails?schedule=84A&approvalNum="
+
+make_url <- function(x) {
+  URLencode(paste(base_url, x, sep = ""))
+}
+```
+
+
+```{r}
+niosh_appr <- niosh_all %>% 
+  ungroup() %>% 
+  mutate(obsolete = str_detect(model_no, fixed("obsolete", ignore_case = TRUE))|
+           str_detect(approval_num, "OBSOLETE")) %>% 
+  filter(obsolete != 1) %>% 
+  mutate(appr_num = substring(approval_num, first = 5)) %>% 
+  distinct(approval_num, appr_num) %>% 
+  mutate(apprv_url = map(appr_num, make_url)) %>% 
+  arrange(appr_num)
+```
+
+```{r}
+get_date <- function(url) { 
+  table <- tryCatch(read_html(url) %>% 
+                     html_table(), error = function(e){NA})
+  
+  if(is.na(table[1])){
+     return(NA)
+  }
+  
+  else {
+    x1 <- table[3] 
+    x <- x1[[1]] %>% 
+      filter(X1 == "Approval Date") %>% 
+      select(X2) 
+  return(x[1,])
+  }
+ }
+```
+
+
+```{r}
+get_manf <- function(url) { 
+  
+  table <- tryCatch(read_html(url) %>% 
+                     html_nodes("table") %>% 
+                      html_node("a") %>% 
+                      html_attr("href"), error = function(e){NA})
+  
+  if(is.na(table[3])){
+     return(NA)
+  }
+  
+  else {
+
+  return(table[3])
+  }
+ }
+```
+
+
+```{r}
+niosh_appr_date <- niosh_appr %>% 
+  mutate(appr_date = map(apprv_url, get_date),
+         manf_url = map(apprv_url, get_manf))
+```
+
+```{r}
+niosh_info <- niosh_appr_date %>% 
+  filter(!is.na(appr_date)) %>% 
+  mutate(manf_url = paste("https://wwwn.cdc.gov", gsub("\\&.*","", manf_url), sep = ""))
+```
+
+
+We now have date information for each approval number. We can also use the approval numbers to get additional information about applicant company name, location information, and contact information. 
+
+```{r}
+appr_num_info <- function(x) { 
+  
+  info <- tryCatch(read_html(x) %>% 
+                     html_nodes(".span19") 
+                   %>% html_nodes(xpath = '//*[@id="contentArea"]')
+                   %>% xml_text(),
+                   error = function(e){NA})
+  
+  if(is.na(info[1])){
+     return(NA)
+  }
+  
+  else {
+    m <- data.frame(info)
+
+    m <- m %>% 
+      mutate(info = str_trim(info))
+    
+    m1 <- separate_rows(m, info, sep = "\r\n") %>% 
+      mutate(info = str_trim(info)) %>% 
+      filter(info != "Back to Approval") %>% 
+      mutate(var = case_when(
+        str_detect(info, "Manufacturer Details for") ~ "Company",
+        str_detect(info, "Email") ~ "Email",
+        str_detect(info, "Telephone") ~ "Telephone", 
+        TRUE ~ "Address Comp"
+                ))
+    
+    company <-  m1 %>% 
+      filter(var == "Company") %>% 
+      mutate(company = str_remove(info, "Manufacturer Details for ")) %>% 
+      select(company)
+    
+    comp_info <- bind_cols(m1, company) %>% 
+      filter(var != "Company")
+    
+    return(comp_info)
+  }
+ }      
+  
+```
+
+```{r}
+appr_info <- data.frame(info = c(), 
+                       var = c(),
+                       company = c())
+
+nums <- unique(niosh_info$manf_url)
+```
+
+```{r}
+for (i in 1:length(nums)) {
+  
+  appr_info <- bind_rows(appr_info, appr_num_info(nums[[i]]))
+  
+}
+```
+
+
+```{r}
+niosh_info %>% 
+  saveRDS(box_here("appr_dates.RDS"))
+```
+
+```{r}
+appr_info %>% 
+  saveRDS(box_here("niosh_manf_info.RDS"))
+```
+
+We then manually review these entries to determine which companies are based in the US. 
+
+```{r}
+niosh_manf_info %>% 
+  distinct(company) %>% 
+  mutate(id = seq(n())) %>% 
+  write_csv(box_here("niosh_info.csv"))
+```
+
+```{r}
+niosh_manf <- niosh_manf_info %>% 
+  distinct(company) %>% 
+  mutate(id = seq(n())) %>% 
+  left_join(niosh_manf_info) %>% 
+  mutate(company = case_when(
+    str_detect(company, "Honeywell") ~ "Honeywell International", 
+    str_detect(company, "GM Global") ~ "General Motors", 
+    TRUE ~ company
+  ), id = case_when(str_detect(company, "Honeywell") ~ as.numeric(21), TRUE ~ as.numeric(id)))
+```
+
+```{r}
+niosh_loc <- read_csv(box_here("niosh_info.csv")) %>% 
+  rename(comp = company) %>% 
+  mutate(comp = case_when(
+    str_detect(comp, "GM Global") ~ "General Motors", 
+    TRUE ~ comp
+  ))
+```
+```{r}
+niosh_master <- left_join(niosh_manf, niosh_loc, by = "id")
+```
+
+```{r}
+remove <- c("Limited" ,"Ltd", "LTD", "Incorporated", "Company",  "Corporation", "Co", "Inc",  "[[:punct:]]", "LLC")
+```
+
+```{r}
+niosh_master_clean <- niosh_master %>% 
+  select(-c("company")) %>% 
+  rename(company = comp) %>% 
+  group_by(company) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  mutate(master = 1) %>% 
+  select(-c("tal")) %>% 
+  mutate(company = case_when(
+    id == 20 ~ "Draeger Inc.", 
+    str_detect(company, "Indiana Face Mask") ~ "Indiana Face Mask",
+    TRUE ~ company
+  ), 
+  comp_match = tolower(str_trim(str_remove_all(company, paste(remove, collapse = "|")))))
+```
+
+
+```{r}
+niosh_apprs <- readRDS(box_here("niosh_clean.RDS")) %>% 
+  mutate(company = case_when(
+      str_detect(company, "Honeywell") ~ "Honeywell International",
+      
+      str_detect(model_no, fixed("x-plore", ignore_case = TRUE)) ~ "Draeger Inc.",
+      str_detect(company, "Indiana Face Mask") ~ "Indiana Face Mask",
+      TRUE ~ company), 
+      company = case_when(
+         !is.na(private_label) & private_label != 0 ~ private_company_prnt, 
+         TRUE ~ company), 
+      comp_match = tolower(str_trim(str_remove_all(company, paste(remove, collapse = "|")))))
+```
+
+
+```{r}
+niosh_2020 <- niosh_apprs %>% 
+  filter(year(mdy(appr_date)) > 2019) %>% 
+  left_join(niosh_master_clean, by = c("comp_match")) %>% 
+  rename(company = company.y) %>% 
+  select(-c("company.x")) %>% 
+  mutate(company = case_when(
+   str_detect(company, "MSA Innovation") ~ "MSA Safety, Inc.", 
+   TRUE ~ company
+  )) 
+```
+
+```{r}
+saveRDS(niosh_2020, box_here("niosh_2020.RDS"))
+```
+

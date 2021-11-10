@@ -1,0 +1,119 @@
+---
+title: "niosh_cleaning"
+author: "Nikhil Kalathil"
+date: "11/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include = FALSE}
+library(tidyverse)
+library(rvest)
+library(rebus)
+library(lubridate)
+library(here)
+library(ggthemes)
+```
+
+```{r}
+
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/FDA/"
+
+```
+
+```{r}
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+```
+
+
+This program contains a procedure to download our list of NIOSH companies into an excel file, manually match those entries to the D&B Hoovers database to get: 1) employees and sales, 2) corporate family, 3) country of ownership, and 4) the DUNS number. 
+
+```{r}
+niosh_manf_info %>% 
+  distinct(company) %>% 
+  mutate(id = seq(n())) %>% 
+  write_csv(box_here("niosh_info.csv"))
+```
+
+```{r}
+niosh_manf <- niosh_manf_info %>% 
+  distinct(company) %>% 
+  mutate(id = seq(n())) %>% 
+  left_join(niosh_manf_info) %>% 
+  mutate(company = case_when(
+    str_detect(company, "Honeywell") ~ "Honeywell International", 
+    str_detect(company, "GM Global") ~ "General Motors", 
+    TRUE ~ company
+  ), id = case_when(str_detect(company, "Honeywell") ~ as.numeric(21), TRUE ~ as.numeric(id)))
+```
+
+```{r}
+niosh_loc <- read_csv(box_here("niosh_info_dbh.csv")) %>% 
+  rename(comp = company) %>% 
+  mutate(comp = case_when(
+    str_detect(comp, "GM Global") ~ "General Motors", 
+    TRUE ~ comp
+  ))
+```
+```{r}
+niosh_master <- left_join(niosh_manf, niosh_loc, by = "id")
+```
+
+```{r}
+remove <- c("Limited" ,"Ltd", "LTD", "Incorporated", "Company",  "Corporation", "Co", "Inc",  "[[:punct:]]", "LLC")
+```
+
+```{r}
+niosh_master_clean <- niosh_master %>% 
+  select(-c("company")) %>% 
+  rename(company = comp) %>% 
+  group_by(company) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  mutate(master = 1) %>% 
+  select(-c("tal")) %>% 
+  mutate(company = case_when(
+    id == 20 ~ "Draeger Inc.", 
+    str_detect(company, "Indiana Face Mask") ~ "Indiana Face Mask",
+    TRUE ~ company
+  ), 
+  comp_match = tolower(str_trim(str_remove_all(company, paste(remove, collapse = "|")))))
+```
+
+
+```{r}
+niosh_apprs <- readRDS(box_here("niosh_clean.RDS")) %>% 
+  mutate(company = case_when(
+      str_detect(company, "Honeywell") ~ "Honeywell International",
+      
+      str_detect(model_no, fixed("x-plore", ignore_case = TRUE)) ~ "Draeger Inc.",
+      str_detect(company, "Indiana Face Mask") ~ "Indiana Face Mask",
+      TRUE ~ company), 
+      company = case_when(
+         !is.na(private_label) & private_label != 0 ~ private_company_prnt, 
+         TRUE ~ company), 
+      comp_match = tolower(str_trim(str_remove_all(company, paste(remove, collapse = "|")))))
+```
+
+
+```{r}
+niosh_2020 <- niosh_apprs %>% 
+  filter(year(mdy(appr_date)) > 2019) %>% 
+  left_join(niosh_master_clean, by = c("comp_match")) %>% 
+  rename(company = company.y) %>% 
+  select(-c("company.x")) %>% 
+  mutate(company = case_when(
+   str_detect(company, "MSA Innovation") ~ "MSA Safety, Inc.", 
+   TRUE ~ company
+  )) 
+```
+
+```{r}
+saveRDS(niosh_2020, box_here("niosh_2020.RDS"))
+```

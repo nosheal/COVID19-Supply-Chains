@@ -1,0 +1,108 @@
+---
+title: "interview_analysis"
+author: "Nikhil Kalathil"
+date: "11/3/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Read Libraries and Import Data
+
+```{r}
+library(here)
+library(tidyverse)
+library(readxl)
+library(patchwork)
+library(RColorBrewer)
+library(lubridate)
+```
+
+```{r}
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Interviews/NK Interview Recordings"
+
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+```
+
+```{r}
+interviews_raw <- read_excel(box_here("/company_interviews.xlsx"), sheet = "Sheet2")
+```
+
+```{r}
+marker = mdy("Aug, 2020")
+```
+
+```{r}
+int_raw <- interviews_raw %>% 
+  mutate(facility_size_dbh = as.numeric(str_trim(gsub(",", "", facility_size_dbh))),
+         idea_date = mdy(idea), 
+         op_date = mdy(Operational), 
+    post_july = case_when(
+      op_date >= marker ~ "After July", 
+      op_date < marker ~ "July or Earlier"
+    ), 
+    med_market = case_when(
+      str_detect(medical_market, "Yes") ~ months_op + 0.25
+    ))
+```
+
+```{r}
+int_clean <- int_raw %>% 
+    select(company, product, financing, labor, machines, material, testing, quality_control) %>% 
+  pivot_longer(cols = -c("company"), names_to = "production_step", values_to = "resource_origin") %>% 
+  mutate(resource_count = case_when(
+    str_detect(resource_origin, "Parent Firm") | str_detect(resource_origin, "External Partnership") | str_detect(resource_origin, "Relationship") ~ 1, 
+    TRUE ~ 0
+  )) %>% 
+  group_by(company) %>% 
+  summarise(resources = sum(resource_count)) %>% 
+  left_join(int_raw) %>% 
+  ungroup() %>%
+  mutate(gov_ass = case_when(
+    !is.na(government_financing) | !is.na(government_procurement) | !is.na(government_credits) ~ resources + 0.5), 
+    big = case_when(
+      atsite_emp_dbh > 500 ~ company
+    ))
+```
+```{r}
+time_pal <- c(brewer.pal(8, "Dark2")[7], brewer.pal(8, "Dark2")[6])
+```
+
+```{r}
+int_graph <- int_clean %>% 
+  filter(specific_product != "Melt Blown") %>% 
+  ggplot() + 
+  geom_col(aes(x = reorder(company, atsite_emp_dbh), y = months_op, fill = post_july)) +
+  geom_col(aes(x = reorder(company, atsite_emp_dbh), y = -gov_ass), alpha = 0.5, fill = "Purple", size = 5) +
+    geom_col(aes(x = reorder(company, atsite_emp_dbh), y = -resources), fill = brewer.pal(3, "Greys")[2]) +
+  geom_point(shape = 21, aes(x = reorder(company, atsite_emp_dbh), y = med_market), fill = brewer.pal(9, "Dark2")[1], size = 5, alpha = 0.7) +
+  scale_fill_manual(values = time_pal) +
+  guides(fill = FALSE) + 
+  coord_flip() + 
+  theme_bw() + 
+  labs(x = "", y = "", fill = "") + 
+  theme(axis.text = element_text(size = 15), 
+        title = element_text(size = 18), 
+        legend.position = "bottom")
+```
+```{r}
+int_clean %>% 
+  filter(specific_product != "Melt Blown") %>% 
+  ggplot() + 
+  geom_point(aes(x = reorder(company, atsite_emp_dbh), y = idea_date, fill = post_july)) +
+  geom_point(aes(x = reorder(company, atsite_emp_dbh), y = op_date, fill = post_july)) +
+  geom_col(aes(x = reorder(company, atsite_emp_dbh), y = -gov_ass), alpha = 0.5, fill = "Purple", size = 5) +
+  scale_fill_manual(values = time_pal) +
+  guides(fill = FALSE) + 
+  coord_flip() + 
+  theme_bw() + 
+  labs(x = "", y = "", fill = "") + 
+  theme(axis.text = element_text(size = 15), 
+        title = element_text(size = 18), 
+        legend.position = "bottom")
+```
+

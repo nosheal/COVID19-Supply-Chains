@@ -1,0 +1,797 @@
+---
+title: "Federal Contracts"
+author: "Nikhil Kalathil"
+date: "9/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include == FALSE }
+library(tidyverse)
+library(tidytext)
+library(RColorBrewer)
+library(ggthemes)
+library(tm)
+library(here)
+library(ggrepel)
+library(lubridate)
+library(ggnewscale)
+library(readxl)
+library(htmltools)
+library(htmlwidgets)
+library(RJSONIO)
+library(patchwork)
+library(treemapify)
+library(viridis)
+```
+```{r}
+
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/"
+
+```
+
+```{r}
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+```
+
+
+
+### Federal Contracts 
+
+We import our CSV of federal contracts and transactions. 
+
+```{r}
+fed_primes <- read_csv(box_here("Contracts/fed_prime.csv"))
+fed_subs <- read_csv(box_here("Contracts/fed_subs.csv"))
+```
+
+We start by simplifying our dataframe to select only the relevant columns, and using a keyword search to remove non-relevant entries. 
+
+```{r}
+fed_contracts <- fed_primes %>% 
+  mutate(performance_location = paste(primary_place_of_performance_city_name, primary_place_of_performance_state_name, sep = ", "), 
+         recipient_location = paste(recipient_city_name, recipient_state_name, sep = ", ")) %>% 
+  group_by(award_id_piid) %>% 
+  rename(performance_start = period_of_performance_start_date, 
+         performance_end = period_of_performance_current_end_date, 
+         performance_maxend = period_of_performance_potential_end_date) %>% 
+  mutate(mods = n(), 
+         total_fed = sum(federal_action_obligation, na.rm = TRUE), 
+         tal = seq(n())) %>% 
+    select(recipient_name, award_id_piid, total_dollars_obligated, total_fed, recipient_duns, awarding_agency_name, awarding_sub_agency_name,  solicitation_date, action_date, performance_start, performance_end, performance_maxend, domestic_or_foreign_entity, place_of_manufacture, organizational_type, award_description, recipient_state_name, performance_location, recipient_location, mods, tal) %>% 
+  filter(str_detect(award_description, fixed("oxygen", ignore_case = TRUE), negate = TRUE)) %>% 
+  filter(str_detect(award_description, fixed("panel", ignore_case = TRUE), negate = TRUE)) %>%
+  filter(str_detect(award_description, fixed("masking", ignore_case = TRUE), negate = TRUE)) %>% 
+  filter(str_detect(award_description, fixed("physicals", ignore_case = TRUE), negate = TRUE)) %>% 
+  filter(str_detect(award_description, fixed("plethysmograph", ignore_case = TRUE), negate = TRUE))  %>% 
+  filter(str_detect(award_description, fixed("liner", ignore_case = TRUE), negate = TRUE)) %>% 
+  filter(str_detect(award_description, fixed("anesthesia", ignore_case = TRUE), negate = TRUE)) %>% 
+  filter(str_detect(award_description, fixed("molecule", ignore_case = TRUE), negate = TRUE)) %>% 
+  filter(str_detect(award_description, fixed("helmet, welder", ignore_case = TRUE), negate = TRUE)) %>% 
+   filter(str_detect(award_description, fixed("wipes", ignore_case = TRUE), negate = TRUE)) %>%
+  filter(str_detect(award_description, fixed("regulator", ignore_case = TRUE), negate = TRUE)) %>% 
+  filter(str_detect(award_description, fixed("canister", ignore_case = TRUE), negate = TRUE)) %>% 
+  filter(str_detect(award_description, fixed("masker", ignore_case = TRUE), negate = TRUE)) %>% 
+  filter(str_detect(award_description, fixed("tape", ignore_case = TRUE), negate = TRUE)) %>%
+  filter(str_detect(award_description, fixed("behalf", ignore_case = TRUE), negate = TRUE)) %>%
+  filter(str_detect(award_description, fixed("sanitiz", ignore_case = TRUE), negate = TRUE)) %>% 
+  filter(str_detect(award_description, fixed("assembly", ignore_case = TRUE), negate = TRUE)) %>% 
+  filter(str_detect(award_description, fixed("tube", ignore_case = TRUE), negate = TRUE)) %>% 
+  filter(str_detect(award_description, fixed("lens", ignore_case = TRUE), negate = TRUE)) %>% 
+  filter(str_detect(award_description, fixed("prosthetics", ignore_case = TRUE), negate = TRUE)) %>% 
+  filter(str_detect(award_description, fixed("light", ignore_case = TRUE), negate = TRUE)) %>% 
+  mutate(test = str_detect(award_description, fixed("test", ignore_case = TRUE)), 
+         cloth = str_detect(award_description, fixed("cloth", ignore_case = TRUE)),
+         ventilator = str_detect(award_description, fixed("ventilator", ignore_case = TRUE)))
+```
+
+
+
+We then use a keyword search to categorize our awards into groups of specifically relevant products. 
+
+```{r}
+fed_products <- fed_contracts %>% 
+  filter(test == FALSE, cloth == FALSE, ventilator == FALSE, place_of_manufacture != "NOT A MANUFACTURED END PRODUCT") %>% 
+  mutate(product_spec = case_when(str_detect(award_description, "CARTRIDGE") | str_detect(award_description, "CRTDRG")  ~ "Respiratory Cartridges",
+    str_detect(award_description, "SURGICAL") | str_detect(award_description, "SURG") | str_detect(award_description, "SRG") |
+      str_detect(award_description, "3-PLY") | str_detect(award_description, "3 PLY") | str_detect(award_description, "LEVEL") | str_detect(award_description, "LVL") | 
+       str_detect(award_description, "PROCEDURE") | str_detect(award_description, "PROC") | str_detect(award_description, "PRC") | str_detect(award_description, "L1") | str_detect(award_description, "L2") | str_detect(award_description, "L3") ~ "Procedural, Surgical, or 3-Ply Mask (ASTM 1, 2, or 3)",
+    str_detect(award_description, "N95") | str_detect(award_description, "NIOSH") | str_detect(award_description, "N-95") ~ "N95 or KN95 Type Respirator", 
+    str_detect(award_description, "PAPR") | str_detect(award_description, "CAPR") | str_detect(award_description, "NAPR")   ~ "PAPR, CAPR, or NAPR", 
+    str_detect(award_description, "ELASTOMERIC") ~ "Elastomeric", 
+    str_detect(award_description, "GAS") | str_detect(award_description, "C50") ~ "Gas Mask", 
+    str_detect(award_description, "DUST") | str_detect(award_description, "CLEANROOM")| str_detect(award_description, "R95") | str_detect(award_description, "P95") | str_detect(award_description, "P100") | str_detect(award_description, "N100") | str_detect(award_description, "N99") | str_detect(award_description, "8541") ~ "Dust, Cleanroom, or Other Respirator", 
+  str_detect(award_description, "HALF") | str_detect(award_description, "7502") | str_detect(award_description, "7501") | str_detect(award_description, "7503") ~ "Half Mask Respirator",
+  str_detect(award_description, "FULL FACE") ~ "Full Face Respirator", 
+  str_detect(award_description, "MELTBLOWN") ~ "Meltblown"
+  )) %>% 
+  mutate(product_spec = case_when(
+    is.na(product_spec) & str_detect(award_description, fixed("nasal", ignore_case = TRUE)) | str_detect(award_description, "CPAP") ~ "CPAP or Nasal Pillow System", 
+    is.na(product_spec) & str_detect(award_description, "MASK")
+   ~ "Unspecified Protective Face Mask", 
+   is.na(product_spec) & str_detect(award_description, "RESPIRATOR") ~ "Unspecified Respirator", 
+TRUE ~ product_spec)) %>% 
+  filter(!is.na(product_spec)) %>% 
+  mutate(broad_product = case_when(
+    product_spec %in% c("CPAP or Nasal Pillow System") ~ "Sleep Apnea", 
+    product_spec %in% c("Meltblown", "Respiratory Cartridges") ~ "Intermediary Products (Meltblown Fabric or Respiratory Cartridges)",
+    product_spec %in% c("Procedural, Surgical, or 3-Ply Mask (ASTM 1, 2, or 3)", "N95 or KN95 Type Respirator") ~ "Standard FDA Regulated Mask/Respirator", 
+    product_spec %in% c("PAPR, CAPR, or NAPR", "Half Mask Respirator", "Full Face Respirator", "Elastomeric") ~ "Advanced, Reusable Respirators", 
+    product_spec %in% c("Dust, Cleanroom, or Other Respirator", "Gas Mask") ~ "Industrial Saftey Respirator or Gas Mask", 
+    TRUE ~ "Other, Unspecified Mask/Respirator"
+  ))
+```
+
+We then convert our dates into date formats and simplify down to the contract level 
+
+```{r}
+fed_products_dates <- fed_products %>% 
+  group_by(award_id_piid) %>% 
+  mutate(action_date = mdy(action_date),
+         solicitation_date = mdy(solicitation_date)) %>% 
+  mutate(solicitation_date = if_else(is.na(solicitation_date), min(action_date), solicitation_date)) %>% 
+  filter(tal == 1) %>% 
+    select(recipient_name, award_id_piid, total_dollars_obligated, total_fed, recipient_duns, awarding_agency_name, awarding_sub_agency_name,  solicitation_date, performance_start, performance_end, performance_maxend, domestic_or_foreign_entity, place_of_manufacture, organizational_type, award_description, recipient_state_name, performance_location, recipient_location, product_spec, broad_product)
+```
+
+```{r}
+fed_products_dates$start_date <- mdy_hms(fed_products_dates$performance_start)
+```
+
+We then get rid of sleep APNEA devices, convert our dates to and restrict our analysis to the January 2020 and onward. 
+
+```{r}
+covid_contracts <- fed_products_dates %>%
+  rename(company = recipient_name) %>% 
+  filter(year(solicitation_date) > 2019) %>% 
+  filter(!broad_product %in% c("Sleep Apnea"), 
+         str_detect(award_description, "SUPPLIES", negate = TRUE)) 
+```
+
+We note that a small number of contracts were not manufactured in the US. 
+
+```{r}
+covid_contracts %>%
+  
+  mutate(domestic = case_when(
+    place_of_manufacture == "MFG IN U.S." ~ "MFG IN US", 
+    place_of_manufacture != "MFG IN U.S." ~ "NOT MFG IN US"
+  )) %>% 
+  group_by(domestic) %>% 
+  count(broad_product)
+```
+We note that contracts with total dollars obligated = 0 are returned or unfulfilled contracts. Foreign manufactured products do not seem to be unfulfilled higher than domestic products.
+
+```{r}
+covid_contracts %>%
+  filter(total_dollars_obligated == 0) %>% 
+  mutate(domestic = case_when(
+    place_of_manufacture == "MFG IN U.S." ~ "MFG IN US", 
+    place_of_manufacture != "MFG IN U.S." ~ "NOT MFG IN US"
+  )) %>% 
+  group_by(domestic) %>% 
+  count(broad_product)
+```
+
+We do, however, note that two companies had far more unfillfiled orders than others. 
+
+```{r}
+covid_contracts %>%
+  filter(total_dollars_obligated == 0) %>% 
+  group_by(company) %>% 
+  count() %>% 
+  filter(n > 20) %>% 
+  arrange(-n)
+```
+
+
+```{r}
+covid_contracts %>% 
+  filter(company == "LOUIS M. GERSON CO., INC") %>% 
+  mutate(fulfilled = case_when(
+    total_dollars_obligated == 0 ~ "No", 
+    total_dollars_obligated != 0 ~ "Yes"
+  )) %>% 
+  group_by(fulfilled) %>% 
+  count(awarding_agency_name)
+```
+
+Thus, we can restrict our data to eliminate unfulfilled contracts, and contracts manufactured outside the US. 
+
+```{r}
+covid_contracts_clean <- covid_contracts %>% 
+  filter(place_of_manufacture == "MFG IN U.S.", total_dollars_obligated > 0) %>% 
+  rename(sub_agency = awarding_sub_agency_name, 
+         agency = awarding_agency_name) %>% 
+  ungroup() %>% 
+  mutate(dollars_bin = case_when(
+    total_dollars_obligated < 200 ~ 1, 
+    total_dollars_obligated >= 200 & total_dollars_obligated < 1000 ~ 2,
+    total_dollars_obligated >= 1000 ~ 3)) %>% 
+  group_by(dollars_bin, product_spec) %>% 
+  mutate(bin_avg = mean(total_dollars_obligated), 
+         bin_contracts = n(), 
+         bin_total = sum(total_dollars_obligated))
+```
+
+```{r}
+covid_contracts_clean %>% 
+  group_by(dollars_bin) %>% 
+  count(broad_product) %>% 
+  view()
+```
+
+```{r}
+covid_contracts_clean %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator")) %>% 
+  group_by(company) %>% 
+  count() %>% 
+  view()
+```
+
+```{r}
+covid_contracts_clean %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator")) %>% 
+  group_by(company) %>% 
+  summarise(total_dollars = sum(total_dollars_obligated)) %>% 
+  view()
+```
+
+```{r}
+covid_contracts_clean %>% 
+  ungroup() %>% 
+  select(company, recipient_duns, recipient_state_name) %>% 
+  distinct() %>% 
+  write_csv(box_here("/Contracts/companies.csv"))
+```
+
+We then examine recipients of interest. These include top recipients in terms of total contracts, as well as top recipients in terms of total dollars. We categorize these companies into groups based on a manual review of their company portfolios. We identify some companies as distributors (no advertised manufacturing), government logistics companys (advertised history of performing logistics for the government and/or contracting), major medical manufacturers (pre pandemic industry leaders in PPE manufacturing and distribution), industrial and military manufacturers (manufacturers that primarily serve military, first responded, or industrial markets), and other manufacturers (other top entities with confirmed or possible US manufacturing capabilities)
+
+
+```{r}
+company <- unique(covid_contracts$company)
+
+distributors <- str_detect(company, "BENCO DENTAL") | str_detect(company, "HENRY SCHEIN") | str_detect(company, "MSC INDUSTRIAL DIRECT CO INC") | str_detect(company, "OFFICE DEPOT") | str_detect(company, "DENTAL HEALTH PRODUCTS INCORPORATED") | str_detect(company, "DOVE MEDICAL SUPPLY LLC") | str_detect(company, "PRACTICON, INC.") | str_detect(company, "THOMAS SCIENTIFIC, LLC") | str_detect(company, "DARBY DENTAL SUPPLY, LLC") | str_detect(company, "SARATOGA ADVISORS GROUP, LLC") | str_detect(company, "GRAINGER") | str_detect(company, "AMERICARE, LLC") | str_detect(company, "TRANSCENDENCE, INC.") | str_detect(company, "ASE DIRECT, INC.") | str_detect(company, "FASTENAL COMPANY") | str_detect(company, "FULTON SUPPLY COMPANY") | str_detect(company, "VAN TECH INDUSTRIES LLC")  | str_detect(company, "PACIFIC LINK INTERNATIONAL CORPORATION")  | str_detect(company, "CONCORDANCE HEALTHCARE SOLUTIONS LLC") | str_detect(company, "CLARK COLLECTION, LTD., THE") | str_detect(company, "TRI-PHARMA, INC.")
+
+gov_logistics <- str_detect(company, "TACTICAL & SURVIVAL SPECIALTIES, INC.") |  str_detect(company, "ATLANTIC DIVING SUPPLY, INC.") | str_detect(company, "GOVERNMENT SCIENTIFIC SOURCE, INC.") | str_detect(company, "WECSYS LLC") | str_detect(company, "FEDERAL RESOURCES SUPPLY COMPANY") | str_detect(company, "SCIENCE APPLICATIONS INTERNATIONAL CORPORATION") | str_detect(company, "METRO MEDICAL EQUIPMENT & SUPPLY, INC.") | str_detect(company, "ARS SALES AND SERVICES LLC") | str_detect(company, "PROAIM AMERICAS, LLC") | str_detect(company, "FEDERAL PRISON") | str_detect(company, "FEDERAL GOVERNMENT EXPERTS, LLC") | str_detect(company, "WRIGHT CONSULTANTS & ASSOCIATES LLC") | str_detect(company, "PREMIUM RX NATIONAL LLC") | str_detect(company, "VENERGY GROUP, LLC") | str_detect(company, "ANA SOURCING LLC") | str_detect(company, "RIDGE THOMAS GROUP, LLC") | str_detect(company, "APEX OMNISOURCE, LLC") | str_detect(company, "SZY HOLDINGS, LLC")
+
+  
+major_manf <- str_detect(company, "3M") | 
+  str_detect(company, "HONEYWELL") |
+  str_detect(company, "MOLDEX") | 
+  str_detect(company, "OWENS")| 
+  str_detect(company, "O&M") |
+  str_detect(company, "CROSSTEX") | 
+  str_detect(company, "PRESTIGE AMERITECH") |
+  str_detect(company, "MEDLINE") | 
+  str_detect(company, "LYDALL") | str_detect(company, "CARDINAL HEALTH 200, LLC") 
+
+other_manf <- str_detect(company, "HANESBRANDS INC.") | str_detect(company, "GVS FILTRATION INC.") | str_detect(company, "PARKDALE ADVANCED MATERIALS, INC.") | str_detect(company, "STRING KING LACROSSE LLC") | str_detect(company, "VPL MEDICAL, INC.") | str_detect(company, "H.C. CONTRACTING, INC.") | str_detect(company, "AURORA INDUSTRIES, LLC") | str_detect(company, "OUTDOOR RESEARCH, LLC")  | str_detect(company, "FAIRFIELD CHAIR COMPANY") | str_detect(company, "MOLNLYCKE HEALTH CARE US, LLC") | str_detect(company, "AVMEDICAL, LLC") | str_detect(company, "CARROLL WOODS, INC.") | str_detect(company, "HOLLINGSWORTH & VOSE COMPANY") | str_detect(company, "PATTERSON COMPANIES, INC.") | str_detect(company, "ORSA TECHNOLOGIES, LLC") | str_detect(company, "WELCH ALLYN, INC.") | str_detect(company, "OMICRON") | str_detect(company, "LIGHTHOUSE FOR THE BLIND, INCORPORATED, THE") | str_detect(company, "MSW, INC.") | str_detect(company, "AMERICA KNITS LLC") | str_detect(company, "RESPONSE TECHNOLOGIES, LLC") | str_detect(company, "BIO-MEDICAL DEVICES INTERNATIONAL, INC.") | str_detect(company, "AMERICAN GIANT, INC.") | str_detect(company, "HOPKINS UNIFORM COMPANY") 
+
+ind_mil_lab <- str_detect(company, "VWR INTERNATIONAL, LLC") | str_detect(company, "FISHER SCIENTIFIC COMPANY L.L.C.") | str_detect(company, "GERSON") | str_detect(company, "UNIFIRE, INC.") | str_detect(company, "ARBILL INDUSTRIES, INC.") | str_detect(company, "NORTH AMERICAN RESCUE, LLC") | str_detect(company, "DRAEGER")| str_detect(company, "L C INDUSTRIES INC.") | str_detect(company, "ILC DOVER LP") | str_detect(company, "IMMEDIATE RESPONSE TECHNOLOGIES, LLC") | str_detect(company, "W. S. DARLEY & CO.") | str_detect(company, "AVON PROTECTION SYSTEMS, INC.")
+```
+
+```{r}
+covid_contracts_struc <- covid_contracts_clean %>% 
+  mutate(company_category = case_when(
+    str_detect(company, "BENCO DENTAL") | str_detect(company, "HENRY SCHEIN") | str_detect(company, "MSC INDUSTRIAL DIRECT CO INC") | str_detect(company, "OFFICE DEPOT") | str_detect(company, "DENTAL HEALTH PRODUCTS INCORPORATED") | str_detect(company, "DOVE MEDICAL SUPPLY LLC") | str_detect(company, "PRACTICON, INC.") | str_detect(company, "THOMAS SCIENTIFIC, LLC") | str_detect(company, "DARBY DENTAL SUPPLY, LLC") | str_detect(company, "SARATOGA ADVISORS GROUP, LLC") | str_detect(company, "GRAINGER") | str_detect(company, "AMERICARE, LLC") | str_detect(company, "TRANSCENDENCE, INC.") | str_detect(company, "ASE DIRECT, INC.") | str_detect(company, "FASTENAL COMPANY") | str_detect(company, "FULTON SUPPLY COMPANY") | str_detect(company, "VAN TECH INDUSTRIES LLC") | str_detect(company, "FIRST NATION GROUP, LLC") | str_detect(company, "PACIFIC LINK INTERNATIONAL CORPORATION") | str_detect(company, "CONCORDANCE HEALTHCARE SOLUTIONS LLC") | str_detect(company, "CLARK COLLECTION, LTD., THE")  | str_detect(company, "TRI-PHARMA, INC.") ~ "Distributors", 
+    str_detect(company, "TACTICAL & SURVIVAL SPECIALTIES, INC.") |  str_detect(company, "ATLANTIC DIVING SUPPLY, INC.") | str_detect(company, "GOVERNMENT SCIENTIFIC SOURCE, INC.") | str_detect(company, "WECSYS LLC") | str_detect(company, "FEDERAL RESOURCES SUPPLY COMPANY") | str_detect(company, "SCIENCE APPLICATIONS INTERNATIONAL CORPORATION") | str_detect(company, "METRO MEDICAL EQUIPMENT & SUPPLY, INC.") | str_detect(company, "ARS SALES AND SERVICES LLC") | str_detect(company, "PROAIM AMERICAS, LLC") | str_detect(company, "FEDERAL PRISON") | str_detect(company, "FEDERAL GOVERNMENT EXPERTS, LLC") | str_detect(company, "WRIGHT CONSULTANTS & ASSOCIATES LLC") | str_detect(company, "PREMIUM RX NATIONAL LLC") | str_detect(company, "VENERGY GROUP, LLC") | str_detect(company, "ANA SOURCING LLC") | str_detect(company, "RIDGE THOMAS GROUP, LLC") | str_detect(company, "APEX OMNISOURCE, LLC") | str_detect(company, "SZY HOLDINGS, LLC") ~ "Government Logistics", 
+    str_detect(company, "3M") | str_detect(company, "HONEYWELL") | str_detect(company, "MOLDEX") | str_detect(company, "OWENS")| str_detect(company, "O&M") | str_detect(company, "CROSSTEX") | str_detect(company, "PRESTIGE AMERITECH") | str_detect(company, "MEDLINE") | str_detect(company, "LYDALL") | str_detect(company, "CARDINAL HEALTH 200, LLC") ~ "Major Medical Manufacturer", 
+    str_detect(company, "HANESBRANDS INC.") | str_detect(company, "GVS FILTRATION INC.") | str_detect(company, "PARKDALE ADVANCED MATERIALS, INC.") | str_detect(company, "STRING KING LACROSSE LLC") | str_detect(company, "VPL MEDICAL, INC.") | str_detect(company, "H.C. CONTRACTING, INC.") | str_detect(company, "AURORA INDUSTRIES, LLC") | str_detect(company, "OUTDOOR RESEARCH, LLC")  |str_detect(company, "FAIRFIELD CHAIR COMPANY") | str_detect(company, "MOLNLYCKE HEALTH CARE US, LLC") | str_detect(company, "AVMEDICAL, LLC") | str_detect(company, "CARROLL WOODS, INC.") | str_detect(company, "HOLLINGSWORTH & VOSE COMPANY") | str_detect(company, "PATTERSON COMPANIES, INC.") | str_detect(company, "ORSA TECHNOLOGIES, LLC") | str_detect(company, "WELCH ALLYN, INC.") | str_detect(company, "OMICRON") | str_detect(company, "LIGHTHOUSE FOR THE BLIND, INCORPORATED, THE") | str_detect(company, "MSW, INC.")  | str_detect(company, "AMERICA KNITS LLC") | str_detect(company, "BIO-MEDICAL DEVICES INTERNATIONAL, INC.") | str_detect(company, "AMERICAN GIANT, INC.") | str_detect(company, "HOPKINS UNIFORM COMPANY") ~ "Other Manufacturer", 
+    str_detect(company, "VWR INTERNATIONAL, LLC") | str_detect(company, "FISHER SCIENTIFIC COMPANY L.L.C.") | str_detect(company, "GERSON") | str_detect(company, "UNIFIRE, INC.") | str_detect(company, "ARBILL INDUSTRIES, INC.") | str_detect(company, "NORTH AMERICAN RESCUE, LLC") | str_detect(company, "DRAEGER")| str_detect(company, "L C INDUSTRIES INC.") | str_detect(company, "ILC DOVER LP") | str_detect(company, "RESPONSE TECHNOLOGIES, LLC") | str_detect(company, "IMMEDIATE RESPONSE TECHNOLOGIES, LLC") | str_detect(company, "W. S. DARLEY & CO.") | str_detect(company, "AVON PROTECTION SYSTEMS, INC.") ~ "Industrial, Military, or Lab Supplier", 
+    TRUE ~ "Uncategorized"
+    ))
+```
+
+```{r}
+covid_contracts_struc %>% 
+  filter(company_category %in% c("Industrial, Military, or Lab Supplier", "Other Manufacturer", "Major Medical Manufacturer"), broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator")) %>%
+  distinct(company, company_category) %>% 
+  group_by(company_category) %>% 
+  count()
+```
+```{r}
+col_pal <- c(brewer.pal(8, "Accent")[5], brewer.pal(8, "Set2")[4], brewer.pal(8, "Accent")[7], brewer.pal(8, "Set2")[8], brewer.pal(9, "Set3")[1])
+```
+
+```{r}
+covid_contracts_struc <- covid_contracts_struc %>% 
+  mutate(comp_order = case_when(
+    broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator") ~ total_dollars_obligated
+  )) %>% 
+  group_by(company_category) %>% 
+  mutate(cat_order = sum(comp_order, na.rm = TRUE)) %>% 
+  ungroup()
+```
+
+
+```{r}
+contracts_sum <- covid_contracts_struc %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator"), !company_category %in% c("Uncategorized")) %>% 
+  group_by(company_category) %>% 
+  summarise(total_dollars = sum(total_dollars_obligated), 
+         total_contracts = n()) %>% 
+  ungroup() %>% 
+  mutate(dollars = scales::dollar(total_dollars)) %>% 
+  ggplot() + 
+  geom_col(aes(x = reorder(company_category, total_dollars), y = total_dollars, fill = reorder(company_category, total_dollars)), show.legend = FALSE) + 
+  geom_label(aes(x = reorder(company_category, total_dollars), y = total_dollars, fill = reorder(company_category, total_dollars), label = dollars), show.legend = FALSE, size = 5) + 
+  scale_y_continuous(labels=scales::dollar, limits = c(0, 700000000))+
+  scale_fill_manual(values = col_pal) + 
+  coord_flip() + 
+  theme_minimal() + 
+  labs(y = "Total Dollars Obligated", x = "") + 
+  theme(axis.text.x = element_text(size = 14, angle = 45), 
+        axis.text.y = element_text(size = 14))
+```
+```{r}
+ggsave(box_here("/Figures/contractssum.png"), plot = contracts_sum, units = "in", width = 10, height = 5)
+```
+
+```{r}
+fda_hist <- covid_contracts_struc %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator"), !company_category %in% c("Uncategorized")) %>% 
+  group_by(company_category) %>% 
+  mutate(total_dollars = sum(total_dollars_obligated), 
+         total_contracts = n()) %>% 
+  ggplot() + 
+  geom_histogram(color = "black", aes(x = solicitation_date, group = reorder(company_category, cat_order), fill = reorder(company_category, cat_order)), alpha = 0.7, position = "stack" ,binwidth =  15) + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  scale_fill_manual(values = col_pal) + 
+  theme_minimal() + 
+  theme(axis.text.y = element_text(size = 12), axis.text.x = element_blank(), legend.position = "bottom", legend.text = element_text(size = 12), plot.title = element_text(hjust = 0.5)) + 
+  labs(x = "" , fill = "", y = "Contracts", title = "Standard FDA/NIOSH Regulated Mask/Respirator") 
+
+
+other_hist <- covid_contracts_struc %>% 
+  filter(broad_product %in% c("Other, Unspecified Mask/Respirator"), !company_category %in% c("Uncategorized")) %>% 
+  group_by(company_category) %>% 
+  mutate(total_dollars = sum(total_dollars_obligated), 
+         total_contracts = n()) %>% 
+  ggplot() + 
+  geom_histogram(color = "black", aes(x = solicitation_date, group = reorder(company_category, cat_order), fill = reorder(company_category, cat_order)), alpha = 0.7, position = "stack", binwidth = 15) + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+   scale_fill_manual(values = col_pal) + 
+  theme_minimal() + 
+  theme(axis.text.y = element_text(size = 12), axis.text.x = element_text(size = 12, angle= 45, hjust = 1), plot.title = element_text(hjust = 0.5), legend.position = "bottom") + 
+  labs(x = "Solictation Date", y = "Contracts", title = "Other, Unspecified Mask/Respirator") + 
+  guides(fill = FALSE) + 
+  labs(fill = "") 
+
+contracts_hist <- fda_hist / other_hist
+
+contracts_hist
+```
+```{r}
+ggsave(box_here("/Figures/contracts_hist.png"), plot = contracts_hist, units = "in", width = 12, height = 5)
+```
+
+```{r}
+both_hist <- covid_contracts_struc %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator"), !company_category %in% c("Uncategorized")) %>% 
+  group_by(company_category) %>% 
+  mutate(total_dollars = sum(total_dollars_obligated), 
+         total_contracts = n()) %>% 
+  ggplot() + 
+  geom_histogram(color = "black", aes(x = solicitation_date, group = reorder(company_category, cat_order), fill = reorder(company_category, cat_order)), alpha = 0.7, position = "stack" ,binwidth =  15) + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  scale_fill_manual(values = col_pal) + 
+  theme_minimal() + 
+  theme(axis.text.y = element_text(size = 12),  axis.text.x = element_text(size = 12, angle= 45, hjust = 1), legend.position = "bottom", legend.text = element_text(size = 12), plot.title = element_text(hjust = 0.5)) + 
+  labs(x = "" , fill = "", y = "Contracts", title = "Standard FDA/NIOSH Regulated Mask/Respirators and Other, Unspecified Mask/Respirators") 
+```
+```{r}
+ggsave(box_here("/Figures/both_hist.png"), plot = both_hist, units = "in", width = 12, height = 5)
+```
+
+```{r}
+covid_contracts_struc %>% filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator"), !company_category %in% c("Uncategorized")) %>% ungroup() %>% group_by(agency) %>% summarise(total_dollars = sum(total_dollars_obligated)) %>% view()
+```
+
+```{r}
+covid_contracts_struc %>% 
+  mutate(agency_lab = str_extract(agency, "(?<=\\().+?(?=\\))")) %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator"), !company_category %in% c("Uncategorized")) %>% 
+  group_by(company, company_category, agency_lab) %>% 
+  summarise(total_dollars = sum(total_dollars_obligated)) %>% 
+  mutate(lab = case_when(
+    company_category %in% c("Major Medical Manufacturer") ~ company
+  )) %>% 
+  mutate(comp_label = paste(company, scales::dollar(total_dollars/1000000), sep = ", ")) %>% 
+  mutate(comp_label = paste(comp_label, "M", sep = "")) %>% view()
+```
+
+```{r}
+contracts_treemap <- covid_contracts_struc %>% 
+  mutate(agency_lab = str_extract(agency, "(?<=\\().+?(?=\\))")) %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator"), !company_category %in% c("Uncategorized")) %>% 
+  group_by(company, company_category, agency_lab, cat_order) %>% 
+  summarise(total_dollars = sum(total_dollars_obligated)) %>% 
+  mutate(lab = case_when(
+    company_category %in% c("Major Medical Manufacturer") ~ company
+  )) %>% 
+  mutate(comp_label = paste(company, scales::dollar(total_dollars/1000000), sep = ", ")) %>% 
+  mutate(comp_label = paste(comp_label, "M", sep = "")) %>% 
+  ggplot(aes(area = total_dollars, fill = reorder(company_category, cat_order), subgroup = agency_lab, label = comp_label), alpha = 0.7) + 
+  geom_treemap(color = "dark grey") 
+```
+
+```{r}
+treemap_text <- contracts_treemap + 
+  geom_treemap_subgroup_border(color = "black", size = 6) +
+  geom_treemap_subgroup_text(colour = "black", place = "topleft", reflow = T) +
+scale_fill_manual(values = col_pal) + theme(legend.position = "bottom", legend.text = element_text(size = 12)) + labs(fill = "") 
+```
+
+```{r}
+treemap_text + geom_treemap_text(colour = "black", place = "centre", grow = TRUE)
+```
+
+```{r}
+test <- covid_contracts_struc %>% 
+  mutate(agency_lab = str_extract(agency, "(?<=\\().+?(?=\\))")) %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator"), !company_category %in% c("Uncategorized")) %>% 
+  group_by(company, company_category) %>% 
+  mutate(total_dollars = sum(total_dollars_obligated)) %>% 
+  mutate(lab = case_when(
+    company_category %in% c("Major Medical Manufacturer") ~ company
+  ), 
+  tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  mutate(top_dollar = total_dollars_obligated > quantile(total_dollars_obligated, .999)) %>% 
+  mutate(top_dollar_label = case_when(top_dollar == TRUE ~ scales::dollar(total_dollars_obligated))) %>% 
+  treemap(  index=c("agency_lab","company"),
+            vSize="total_dollars",
+            type="index",
+            palette = "Set2",
+            bg.labels=c("white"),
+            align.labels=list(
+              c("center", "center"), 
+              c("right", "bottom")
+            )  
+          )      
+```
+
+
+```{r}
+covid_contracts_struc %>% 
+  saveRDS(box_here("/contracts/covid_contracts.RDS"))
+```
+
+
+# DRAFTS
+```{r}
+covid_contracts_struc %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator"), company_category %in% c("Industrial, Military, or Lab Supplier")) %>% 
+  group_by(company_category) %>% 
+  mutate(total_dollars = sum(total_dollars_obligated), 
+         total_contracts = n()) %>% 
+  ggplot() + 
+  geom_histogram(aes(x = solicitation_date, group = reorder(company_category, total_dollars), fill = reorder(company_category, total_dollars)), alpha = 0.7, position = "stack") + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  scale_fill_brewer(palette = "Set2") + 
+  theme_minimal() + 
+  theme(axis.text.y = element_text(size = 12), axis.text.x = element_text(size = 12, angle= 45, hjust = 1)) + 
+  labs(x = "Solictation Date") + 
+  facet_wrap(~broad_product)
+```
+
+```{r}
+ %>% 
+  group_by(company_category) %>% 
+  summarise(n = n(), total_dollars = sum(total_dollars_obligated))
+```
+
+```{r}
+hist1 <- covid_contracts_clean %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator")) %>% 
+  ggplot() + 
+  geom_histogram(aes(x = solicitation_date, group = dollars_bin, fill = as.factor(dollars_bin))) + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  scale_fill_brewer(palette = "Set2") + 
+  theme_minimal() + 
+  theme(axis.text.y = element_text(size = 12), axis.text.x = element_text(size = 12, angle= 45, hjust = 1)) + 
+  guides(fill = FALSE) + 
+  labs(x = "Solictation Date") + 
+  facet_wrap(~broad_product)
+```
+
+```{r}
+covid_contracts_clean %>% 
+  group_by(broad_product, solicitation_date) %>% 
+  summarise(total_dollars_obligated = sum(total_dollars_obligated)) %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator")) %>% 
+  ggplot() + 
+  geom_point(shape = 21, alpha = 0.7, color = "black", aes(x = solicitation_date, y = total_dollars_obligated, group = broad_product, fill = as.factor(broad_product))) + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  scale_fill_brewer(palette = "Set2") + 
+  theme_minimal() + 
+  theme(axis.text.y = element_text(size = 12), axis.text.x = element_text(size = 12, angle= 45, hjust = 1)) + 
+  guides(fill = FALSE) + 
+  labs(x = "Solictation Date")
+```
+
+```{r}
+covid_contracts_clean %>% 
+  group_by(company) %>% 
+  mutate(comp_contracts = n()) %>% 
+  filter(comp_contracts > 40) %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator")) %>% 
+  ggplot() + 
+  geom_histogram(aes(x = solicitation_date, group = company, fill = as.factor(company)), color = "black") + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  theme_minimal() + 
+  facet_wrap(~broad_product) + 
+  theme(axis.text.y = element_text(size = 12), axis.text.x = element_text(size = 12, angle= 45, hjust = 1)) + 
+  guides(fill = FALSE) + 
+  labs(x = "Solictation Date") + 
+  facet_wrap(~broad_product)
+```
+
+
+```{r}
+  filter(broad_product %in% c("Other, Unspecified Mask/Respirator")) %>% 
+  ggplot() + 
+  geom_histogram(aes(x = solicitation_date, group = dollars_bin, fill = as.factor(dollars_bin))) + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  scale_fill_brewer(palette = "Set2") + 
+  theme_minimal() + 
+  facet_wrap(~broad_product) + 
+  theme(axis.text.y = element_text(size = 12), axis.text.x = element_text(size = 12, angle= 45, hjust = 1)) + 
+  guides(fill = FALSE) + 
+  labs(x = "Solictation Date")
+```
+
+
+
+```{r}
+fed_products_clean %>% 
+  ungroup() %>% 
+  mutate(dollars_bin = case_when(
+    total_dollars_obligated < 200 ~ 1, 
+    total_dollars_obligated >= 200 & total_dollars_obligated < 500 ~ 2,
+    total_dollars_obligated >= 500 ~ 3)) %>% 
+  ggplot() + 
+  geom_point(shape = 21, aes(x = sol_date, y = action_date, size = total_dollars_obligated)) + 
+  facet_wrap(~dollars_bin)
+```
+
+
+```{r}
+fed_products_clean %>% 
+  filter(awarding_agency_name == "DEPARTMENT OF DEFENSE (DOD)") %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator")) %>% 
+  view()
+```
+
+
+```{r}
+fed_products_clean %>% 
+  group_by(awarding_agency_name) %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator")) %>% 
+  count(broad_product) %>%
+  pivot_wider(names_from = c("broad_product"), values_from = c("n")) %>% 
+  write_csv(box_here("Contracts/agency_contracts.csv"))
+```
+
+```{r}
+fed_products_clean %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator")) %>% 
+  summarise(total_dollars = sum(total_dollars_obligated), federal_dollars = sum(federal_action_obligation, na.rm = TRUE)) 
+```
+
+```{r}
+fed_products_clean %>% 
+  group_by(awarding_agency_name, broad_product, sol_date) %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator")) %>% 
+  filter(awarding_agency_name == "DEPARTMENT OF DEFENSE (DOD)") %>%
+  summarise(n = n(), total_dollars = sum(total_dollars_obligated), federal_dollars = sum(federal_action_obligation, na.rm = TRUE)) %>% 
+  ggplot() + 
+  geom_jitter(aes(x = sol_date, y = n, size = total_dollars/1000000, fill = total_dollars/1000000), shape = 21, alpha = 0.7) + 
+  facet_wrap(~broad_product)
+```
+
+```{r}
+fed_contracts_companies <- fed_products_clean %>% 
+  group_by(company, recipient_state_name) %>% 
+  mutate(first_action = min(action_date), 
+         last_action = max(action_date), 
+         mean_delay = mean(action_date - sol_date), 
+         total_contracts = n(),
+         total_dollars = sum(total_dollars_obligated), 
+         total_fed_dollars = sum(federal_action_obligation),
+         tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  select(company, recipient_state_name, funding_agency_name, first_action, last_action, mean_delay, total_contracts, total_dollars, total_fed_dollars)
+```
+
+```{r}
+other_companies <- read_csv(box_here("manf_company_list.csv")) %>% 
+  mutate(company = tolower(company)) 
+```
+
+```{r}
+contracts_merge <- fed_contracts_companies %>% 
+  rename(contract_company = company) %>% 
+  mutate(company = tolower(contract_company), 
+         contracts = 1) 
+```
+
+```{r}
+contracts <- full_join(contracts_merge, other_companies, by = "company") %>% 
+  select(company) %>% write_csv(box_here("contracts_check.csv"))
+```
+```{r}
+fed_contracts_companies %>% 
+  write_csv(box_here("fed_contracts_companies.csv"))
+```
+
+```{r}
+fed_products_clean %>% 
+  group_by(organizational_type) %>% 
+  count() %>% 
+  arrange(-n)
+```
+```{r}
+fed_products_clean %>% 
+  filter(year(action_date) < 2021) %>% 
+  group_by(awarding_agency_name) %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator")) %>% 
+  count(broad_product) %>% 
+  ggplot() + 
+  geom_col(aes(x = awarding_agency_name, y = n, fill = broad_product), position = "Dodge") + 
+  coord_flip() + 
+  labs(x = "Awarding Agency", y = "Total Contracts")
+```
+
+
+
+
+```{r}
+fed_products_clean %>% 
+  filter(year(action_date) < 2021) %>% 
+  group_by(company) %>% 
+  count(broad_product) %>% 
+  pivot_wider(names_from = c("broad_product"), values_from = c("n")) %>% 
+  view()
+```
+
+```{r}
+fed_products_clean %>% 
+  filter(year(action_date) < 2021) %>% 
+  group_by(awarding_agency_name, broad_product) %>% 
+  summarise(total_dollars = sum(total_dollars_obligated, na.rm = TRUE)) %>% 
+  pivot_wider(names_from = c("broad_product"), values_from = c("total_dollars")) %>% 
+  write_csv(box_here("Contracts/agency_dollars.csv"))
+```
+
+```{r}
+fed_products_clean %>% 
+  filter(year(action_date) < 2021) %>% 
+  group_by(company) %>% 
+  count(broad_product) %>% 
+  pivot_wider(names_from = c("broad_product"), values_from = c("n")) %>% 
+  view()
+```
+
+```{r}
+fed_products_clean %>% 
+  filter(year())
+  filter(product_spec %in% c("Unspecified Mask or Respirator")) %>% 
+  group_by(company) %>% 
+  mutate(action_date = mdy(solicitation_date)) %>% 
+  view()
+```
+
+
+```{r}
+agency_flow <- fed_products_clean %>% 
+  group_by(award_agency, sub_agency, product_spec, solicitation_date) %>%
+  mutate(total_dollars = sum(total_dollars_obligated, na.rm = TRUE), total_contracts = n()) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1)
+```
+
+```{r}
+library(ggalluvial)
+```
+
+```{r}
+immediate_response <- agency_flow %>% 
+  mutate(award_date = mdy(solicitation_date)) %>% 
+  filter(award_date < mdy("01/01/2021"))
+```
+
+```{r}
+immediate_response %>% 
+  filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator")) %>% 
+  ggplot() + 
+  geom_col(aes(x = award_date, y = total_contracts, fill = award_agency)) + 
+  facet_wrap(~product_spec) + 
+  guides(color = FALSE) + 
+  theme(legend.position = "bottom")
+```
+
+
+```{r}
+agency_flow %>% 
+  mutate(award_date = mdy(solicitation_date)) %>% 
+  filter(award_date < mdy("05/01/2020")) %>% 
+  ggplot() + 
+  geom_col(aes(x = award_date, y = total_contracts, fill = product_spec)) +
+  guides(fill = FALSE) + 
+  facet_wrap(~award_agency)
+```
+
+```{r}
+
+  geom_alluvium(aes(x = product_spec, stratum = product_spec,  y = total_contracts, axis1 = award_agency, axis2 = sub_agency))
+```
+
+```{r}
+fed_products_clean %>% 
+  group_by(award_agency, sub_agency, solicitation_date) %>%
+  summarise(total_dollars = sum(total_dollars_obligated, na.rm = TRUE)) %>% 
+  view()
+```
+
+```{r}
+fed_products_clean %>% 
+  group_by(company, product_spec, sub_agency) %>% 
+  summarise(total_dollars = sum(total_dollars_obligated), total_contracts = n(), activated = min(mdy(action_date)), avg_delay = mean(delay)) %>% 
+  view()
+
+```
+
+```{r}
+fed_products_clean %>% 
+  filter(award_agency != sub_agency) %>% 
+  group_by(company, product_spec, award_agency) %>% 
+  summarise(total_dollars = sum(total_dollars_obligated), total_contracts = n(), activated = min(mdy(action_date)), avg_delay = mean(delay)) %>% 
+  ggplot() + 
+  geom_col(aes(x = activated, y = total_contracts, fill = product_spec), position = "stack") + 
+  facet_wrap(~award_agency)
+```
+
+
+```{r}
+fed_products_clean %>% 
+  filter(mdy(solicitation_date) < mdy("06/01/2020")) %>% 
+  ggplot() +
+  geom_point(shape = 21, aes(x = mdy(solicitation_date), y = reorder(recipient_name, total_dollars_obligated), size = total_dollars_obligated, fill = award_agency)) +
+  guides(size = FALSE, fill = FALSE) + 
+  scale_x_date(date_labels = "%Y %b %d") + 
+  scale_x_date(date_breaks = "1 week") +
+  labs(x = "", y = "") + 
+  facet_wrap(~award_agency) + 
+  theme_bw()
+```
+
+```{r}
+fed_products_clean %>% 
+  group_by(recipient_name) %>% 
+  count()
+```
+
+
+```{r}
+library(networkD3)
+```
+
+```{r}
+p <- sankeyNetwork(Links = )
+```
+
+
+```{r}
+fed_subs_simple <- fed_subs %>% 
+  select(subawardee_name, subaward_description, subawardee_state_name, subaward_action_date, subaward_amount
+, prime_awardee_name, prime_awardee_parent_name, prime_awardee_state_name, prime_award_awarding_agency_name, prime_award_funding_sub_agency_name, prime_award_unique_key, prime_award_piid) 
+
+view(fed_subs_simple)
+```
