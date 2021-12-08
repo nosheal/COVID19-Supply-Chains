@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-This document will contain a program to webscrap and format NIOSH search data. The results of this program are not complete and require additional cleaning/manual data entry, but this program should solve the problem of needing to download the NIOSH database. 
+This document will contain a program to webscrape and format NIOSH search data, as well as extract and identify the manufacturing information for each approved manufacturer. The results of this program are not complete and require additional cleaning/manual data entry, but this program should solve the problem of needing to download the NIOSH database. 
 
 ```{r, include = FALSE}
 library(tidyverse)
@@ -412,7 +412,6 @@ for (i in 1:length(nums)) {
 }
 ```
 
-
 ```{r}
 niosh_info %>% 
   saveRDS(box_here("appr_dates.RDS"))
@@ -423,29 +422,12 @@ appr_info %>%
   saveRDS(box_here("niosh_manf_info.RDS"))
 ```
 
-We then manually review these entries to determine which companies are based in the US. 
-
 ```{r}
-niosh_manf_info %>% 
-  distinct(company) %>% 
-  mutate(id = seq(n())) %>% 
-  write_csv(box_here("niosh_info.csv"))
+niosh_manf <- appr_info
 ```
 
 ```{r}
-niosh_manf <- niosh_manf_info %>% 
-  distinct(company) %>% 
-  mutate(id = seq(n())) %>% 
-  left_join(niosh_manf_info) %>% 
-  mutate(company = case_when(
-    str_detect(company, "Honeywell") ~ "Honeywell International", 
-    str_detect(company, "GM Global") ~ "General Motors", 
-    TRUE ~ company
-  ), id = case_when(str_detect(company, "Honeywell") ~ as.numeric(21), TRUE ~ as.numeric(id)))
-```
-
-```{r}
-niosh_loc <- read_csv(box_here("niosh_info.csv")) %>% 
+niosh_loc <- read_csv(box_here("niosh_info_dbh.csv")) %>% 
   rename(comp = company) %>% 
   mutate(comp = case_when(
     str_detect(comp, "GM Global") ~ "General Motors", 
@@ -475,6 +457,25 @@ niosh_master_clean <- niosh_master %>%
     TRUE ~ company
   ), 
   comp_match = tolower(str_trim(str_remove_all(company, paste(remove, collapse = "|")))))
+```
+
+
+```{r}
+niosh_full <- niosh_appr %>% 
+  filter(str_detect(model_no, "\\(FDA\\)", negate = TRUE)) %>% #drop these entries because they are accounted for in the surgical N95 respirator categories of observations
+  group_by(company, appr_num) %>% 
+  mutate(products = n(), 
+    tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  group_by(appr_num) %>% 
+  mutate(companies = n()) %>% 
+  left_join(niosh_parents) #%>% 
+  #mutate(parent = companies > 1 & private_label == "0") %>% 
+```
+We can then save and export this file. 
+
+```{r}
+saveRDS(niosh_full, box_here("niosh_clean.RDS"))
 ```
 
 
@@ -509,3 +510,57 @@ niosh_2020 <- niosh_apprs %>%
 saveRDS(niosh_2020, box_here("niosh_2020.RDS"))
 ```
 
+## OLD CODE: 
+
+
+## Back to Analysis 
+
+We now have the approval date for each application. However, there are often multiple companies and countries involved in each application. 
+
+Thus, we need to aggregate our data back to be unique at the company and approval number level. We also want to identify parent companies when a company is part of a broader application. 
+
+
+```{r}
+niosh_parents <- niosh_notes %>% 
+  rename(company = private_company_prnt) %>% 
+  mutate(company = case_when(
+    str_detect(company, "Fido Industrial Safety Masks Manufacturer Company, Ltd.") ~ "Fido Mask Company, Ltd.", 
+    TRUE ~ company
+  ),
+  company = case_when(
+    str_detect(company, "Guangzhou Harley Commodity Company, Ltd.") ~ "Guangzhou Harley Commodity Company Ltd.", 
+    TRUE ~ company
+  ), 
+  company = case_when(
+    company %in% c("Shining Star Electronic Technology Co., Ltd.") ~ "Shining Star Electronic Technology Co, Ltd.", 
+    TRUE ~ company
+  ), 
+  company = case_when(
+    str_detect(company, "Fangtian") ~ "Suzhou Fangtian Industries Company, Ltd.", 
+    TRUE ~ company), 
+  company = case_when(
+    str_detect(company, "Suzhou Sanical") ~ "Suzhou Sanical Protective Product Manufacturing Company, Ltd.", 
+    TRUE ~ company
+  )) %>%  
+  ungroup() %>% 
+  mutate(parent = 1) %>% 
+  select(company, parent)
+```
+
+```{r}
+niosh_full <- niosh_appr %>% 
+  filter(str_detect(model_no, "\\(FDA\\)", negate = TRUE)) %>% #drop these entries because they are accounted for in the surgical N95 respirator categories of observations
+  group_by(company, appr_num) %>% 
+  mutate(products = n(), 
+    tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  group_by(appr_num) %>% 
+  mutate(companies = n()) %>% 
+  left_join(niosh_parents) #%>% 
+  #mutate(parent = companies > 1 & private_label == "0") %>% 
+```
+We can then save and export this file. 
+
+```{r}
+saveRDS(niosh_full, box_here("niosh_clean.RDS"))
+```

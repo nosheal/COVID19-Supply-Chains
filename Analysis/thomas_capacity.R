@@ -9,26 +9,18 @@ library(readxl)
 
 dir1 <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/"
 
-conf_cap <- read_xlsx(paste(dir1, "manf_comps.xlsx", sep = ""), sheet = "Capacity") %>% 
-  filter(dom_useful == "1")
+conf_cap <- read_xlsx(box_here("monthly_capacity.xlsx"))
 
 conf_cap %>% 
+  filter(is.na(dom_useful) | dom_useful == 1) %>% 
   group_by(Product) %>% 
-  mutate(count = n(), 
-         count_lab = case_when(
-           `Monthly Capacity` == max(`Monthly Capacity`) ~ paste(count, " Companies")
-         )) %>% 
-  filter(!Product %in% c("Cloth Masks","Face Shields"), str_detect(company, "Lining", negate = TRUE)) %>% 
-  ggplot(aes(Product, `Monthly Capacity`, fill = company)) + 
-  geom_col(position = "stack", color = "Black", width = .3) + 
-  scale_fill_brewer(palette = "Set3") +
-  scale_y_continuous(labels = scales::comma) + 
-  labs(title = "Maximum Monthly Capacity", subtitle = "Data from Thomasnet, 07/13/2020. \n8 Unique Suppliers", y = "Maximum Units per Month", fill = "") + 
-  theme_bw()
-
-cap_col <- c(brewer.pal(9, "Set3")[5], brewer.pal(9, "Set3")[8], brewer.pal(9, "Set3")[6], brewer.pal(9, "Set3")[2], brewer.pal(9, "Set3")[3], brewer.pal(9, "Set3")[4], brewer.pal(9, "Set3")[7])
+  ggplot(aes(Product, `Monthly Capacity`)) +
+  geom_col(aes(group = company, fill = company), position = "stack")+
+  scale_fill_brewer(palette = "Set3") + 
+  scale_y_continuous(labels = scales::comma) 
 
 conf_cap %>% 
+  filter(is.na(dom_useful) | dom_useful == 1) %>% 
   group_by(Product) %>% 
   mutate(count = n(), 
          count_lab = case_when(
@@ -40,7 +32,7 @@ conf_cap %>%
   geom_label(aes(label = str_wrap(desc2)), size = 3, y = 1700000, show.legend = FALSE, alpha = 0.88) + 
   scale_y_continuous(labels = scales::comma) + 
   #scale_fill_brewer(palette = "Set3") +
-  scale_fill_manual(values = cap_col) +
+  scale_fill_brewer(palette = "Set1") +
   coord_flip() + 
   labs(title = "Maximum Monthly Capacity, Selected Suppliers", subtitle = "Data from Thomasnet, 07/13/2020. \n7 Companies Total \n46.6% of Confirmed Domestic Thomasnet Manufacturers of Standard FDA Approved Hospital Grade Respirators", y = "Maximum Respirators per Month", x = "") + 
   theme_bw()
@@ -48,6 +40,7 @@ conf_cap %>%
 cap_col2 <- c(brewer.pal(9, "Set3")[6], brewer.pal(9, "Set3")[2], brewer.pal(9, "Set3")[3], brewer.pal(9, "Set3")[1])
   
 conf_cap %>% 
+  filter(is.na(dom_useful) | dom_useful == 1) %>%
   group_by(Product) %>% 
   mutate(count = n(), 
          count_lab = case_when(
@@ -59,7 +52,6 @@ conf_cap %>%
   geom_label(aes(label = str_wrap(desc2)), size = 3, y = 3000000, show.legend = FALSE, alpha = 0.88) + 
   scale_y_continuous(labels = scales::comma) + 
   #scale_fill_brewer(palette = "Set3") +
-  scale_fill_manual(values = cap_col2) +
   coord_flip() + 
   labs(title = "Maximum Monthly Capacity, Selected Suppliers", subtitle = "Data from Thomasnet, 07/13/2020. \n4 Companies Total \n23.5% of Confirmed Domestic Thomasnet Manufacturers of Standard FDA Approved Hospital Grade Masks", y = "Maximum Respirators per Month", x = "") + 
   theme_bw()

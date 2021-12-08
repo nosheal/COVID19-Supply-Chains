@@ -39,16 +39,188 @@ marker = mdy("Aug, 2020")
 ```{r}
 int_raw <- interviews_raw %>% 
   mutate(facility_size_dbh = as.numeric(str_trim(gsub(",", "", facility_size_dbh))),
+         DUNS = str_trim(gsub("-", "", DUNS)),
          idea_date = mdy(idea), 
          op_date = mdy(Operational), 
     post_july = case_when(
-      op_date >= marker ~ "After July", 
-      op_date < marker ~ "July or Earlier"
+      op_date >= marker ~ "August, 20 or After", 
+      op_date <= marker ~ "Before August, 20"
     ), 
     med_market = case_when(
       str_detect(medical_market, "Yes") ~ months_op + 0.25
-    ))
+    ), 
+   company = case_when(
+     str_detect(company, "AmeriShield") ~ "Premium-PPE Amerishield",
+     str_detect(company, "Protective Health Gear") ~ "PGH",
+     str_detect(company, "Honeywell") ~ "Honeywell",
+     TRUE ~ company), 
+   stop_start = case_when(
+     str_detect(company, "Advoque") ~ mdy("09/01/20"), 
+     str_detect(company, "NFI") ~ mdy("05/01/21")), 
+   stop_end = case_when(
+     str_detect(company, "Advoque") ~ mdy("01/01/21")))
 ```
+
+
+```{r}
+int_graph <- int_raw %>% 
+  filter(specific_product != "Melt Blown") %>% 
+  ggplot() +
+  geom_segment(aes(x = idea_date, xend = op_date, y = reorder(company, atsite_emp_dbh), yend = reorder(company, atsite_emp_dbh)), linetype = 2) + 
+  geom_point(shape = 21, aes(x = idea_date, y = reorder(company, atsite_emp_dbh) ), size = 2, alpha = 0.5, fill = brewer.pal(8, "Set2")[1]) + 
+  #geom_text(aes(x = idea_date, y = reorder(company, atsite_emp_dbh)), label = "Idea",  size = 4, color = "Black") + 
+  geom_point(shape = 21, aes(x = op_date, y = reorder(company, atsite_emp_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
+  geom_segment(aes(x=stop_start, xend = stop_end, y = reorder(company, atsite_emp_dbh), yend = reorder(company, atsite_emp_dbh)), size = 3, color = "Dark Red", alpha = 0.4) + 
+  geom_text(aes(stop_start, y = reorder(company, atsite_emp_dbh)), label = "X", color = "Dark Red", fontface = "bold", size = 3, vjust = 0.19) + 
+  geom_point(shape = 21, aes(x = stop_end, y = reorder(company, atsite_emp_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
+  theme_bw() + 
+  scale_x_date(date_labels = "%b", breaks = "month") + 
+  labs(x = "", y = "", fill = "") + 
+  theme(axis.text = element_text(size = 15), 
+        #axis.text.x=element_text(angle=60, hjust=1),
+        title = element_text(size = 18), 
+        legend.position = "bottom") 
+```
+
+
+
+
+```{r}
+all_reg <- readRDS("C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/FDA/all_reg.RDS") %>% 
+  mutate(DUNS = str_trim(gsub("-", "", DUNS)),
+        DUNS = case_when(
+    str_detect(APPLICANT, "Premium-PPE ") ~ "XX-01", 
+    TRUE ~ DUNS
+  )) %>% 
+  select(DUNS, reg_type, ddate, DATERECEIVED) %>% 
+  mutate(rdate = mdy(DATERECEIVED)) %>% 
+  filter(year(ddate)> 2019)
+```
+
+```{r}
+int_raw %>% 
+  mutate(DUNS = case_when(
+    str_detect(company, "Premium PPE") ~ "XX-01", 
+    TRUE ~ DUNS
+  ), 
+   company = if_else(str_detect(company, "AmeriShield"), "Premium-PPE Amerishield", company)) %>% 
+  mutate(interview = 1) %>% 
+  saveRDS("C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/interviews.RDS")
+```
+
+```{r}
+int_reg <- int_raw %>% 
+  mutate(DUNS = case_when(
+    str_detect(company, "Premium-PPE") ~ "XX-01", 
+    TRUE ~ DUNS
+  )) %>% 
+  left_join(all_reg, by = "DUNS") %>% 
+  filter(product != "Melt Blown") %>% 
+  group_by(company, ddate, reg_type) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1)
+```
+
+```{r}
+int_eua <- int_reg %>% 
+  filter(reg_type == " FDA EUA (Surgical Masks)") 
+
+int_510 <- int_reg %>% 
+  filter(reg_type == "FDA 510k (Surgical Masks)")
+
+int_NIOSH <- int_reg %>% 
+  filter(reg_type == "NIOSH (Respirators)")
+```
+
+
+```{r}
+int_reg_graph <- int_graph + 
+  geom_point(data = int_510, aes(x = ddate, y = reorder(company, atsite_emp_dbh)), shape = 22, color = "black", size = 5, fill = brewer.pal(9, "Purples")[3]) + 
+  geom_point(data = int_NIOSH, aes(x = ddate, y = reorder(company, atsite_emp_dbh)), shape = 22, size = 5, fill = brewer.pal(9, "Purples")[6]) + 
+  geom_point(data = int_eua, aes(x = ddate, y = reorder(company, atsite_emp_dbh)), shape = 22, size = 4, fill = brewer.pal(9, "Purples")[3], alpha = 0.6)
+```
+
+```{r}
+int_fast <- int_raw %>% 
+  filter(specific_product != "Melt Blown", op_date < mdy("06/01/20"), atsite_emp_dbh < 500) %>% 
+  ggplot() +
+  geom_segment(aes(x = idea_date, xend = op_date, y = reorder(company, atsite_emp_dbh), yend = reorder(company, atsite_emp_dbh)), linetype = 2) + 
+  geom_point(shape = 21, aes(x = idea_date, y = reorder(company, atsite_emp_dbh) ), size = 2, alpha = 0.5, fill = brewer.pal(8, "Set2")[1]) + 
+  geom_point(shape = 21, aes(x = op_date, y = reorder(company, atsite_emp_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
+  theme_bw() + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  labs(x = "", y = "", fill = "") + 
+  theme(axis.text = element_text(size = 15), 
+        axis.text.x=element_text(angle=60, hjust=1),
+        title = element_text(size = 18), 
+        legend.position = "bottom") 
+
+int_fast
+```
+
+```{r}
+int_med <- int_raw %>% 
+  filter(specific_product != "Melt Blown", op_date > mdy("06/01/20") & op_date < mdy("09/01/20")) %>% 
+  ggplot() +
+  geom_segment(aes(x = idea_date, xend = op_date, y = reorder(company, atsite_emp_dbh), yend = reorder(company, atsite_emp_dbh)), linetype = 2) + 
+  geom_point(shape = 21, aes(x = idea_date, y = reorder(company, atsite_emp_dbh) ), size = 2, alpha = 0.5, fill = brewer.pal(8, "Set2")[1]) + 
+  geom_point(shape = 21, aes(x = op_date, y = reorder(company, atsite_emp_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
+  theme_bw() + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  labs(x = "", y = "", fill = "") + 
+  theme(axis.text = element_text(size = 15), 
+        axis.text.x=element_text(angle=60, hjust=1),
+        title = element_text(size = 18), 
+        legend.position = "bottom") 
+
+int_med
+```
+
+```{r}
+int_slow <- int_raw %>% 
+  filter(specific_product != "Melt Blown", op_date >= mdy("09/01/20")) %>% 
+  ggplot() +
+  geom_segment(aes(x = idea_date, xend = op_date, y = reorder(company, atsite_emp_dbh), yend = reorder(company, atsite_emp_dbh)), linetype = 2) + 
+  geom_point(shape = 21, aes(x = idea_date, y = reorder(company, atsite_emp_dbh) ), size = 2, alpha = 0.5, fill = brewer.pal(8, "Set2")[1]) + 
+  geom_point(shape = 21, aes(x = op_date, y = reorder(company, atsite_emp_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
+  theme_bw() + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  labs(x = "", y = "", fill = "") + 
+  theme(axis.text = element_text(size = 15), 
+        axis.text.x=element_text(angle=60, hjust=1),
+        title = element_text(size = 18), 
+        legend.position = "bottom") 
+
+int_slow
+```
+```{r}
+int_raw %>% 
+  filter(specific_product != "Melt Blown") %>% 
+  ggplot() +
+  geom_segment(aes(x = idea_date, xend = op_date, y = reorder(company, atsite_emp_dbh), yend = reorder(company, atsite_emp_dbh)), linetype = 2) + 
+  geom_point(shape = 21, aes(x = idea_date, y = reorder(company, atsite_emp_dbh) ), size = 2, alpha = 0.5, fill = brewer.pal(8, "Set2")[1]) + 
+  geom_point(shape = 21, aes(x = op_date, y = reorder(company, atsite_emp_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
+  theme_minimal() + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  labs(x = "", y = "", fill = "") + 
+  theme(axis.text = element_text(size = 15), 
+        axis.text.x=element_text(angle=60, hjust=1),
+        title = element_text(size = 18), 
+        legend.position = "bottom") 
+```
+
+
+```{r}
+
+  geom_col(aes(x = reorder(company, atsite_emp_dbh), y = months_op, fill = post_july)) +
+  geom_col(aes(x = reorder(company, atsite_emp_dbh), y = -gov_ass), alpha = 0.5, fill = "Purple", size = 5) +
+    geom_col(aes(x = reorder(company, atsite_emp_dbh), y = -resources), fill = brewer.pal(3, "Greys")[2]) +
+  geom_point(shape = 21, aes(x = reorder(company, atsite_emp_dbh), y = med_market), fill = brewer.pal(9, "Dark2")[1], size = 5, alpha = 0.7) +
+  scale_fill_manual(values = time_pal) +
+  guides(fill = FALSE) + 
+  coord_flip() + 
+```
+
 
 ```{r}
 int_clean <- int_raw %>% 

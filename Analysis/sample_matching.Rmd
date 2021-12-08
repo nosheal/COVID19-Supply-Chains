@@ -1,0 +1,1146 @@
+---
+title: "Mapping and Analysis of Manually Cleaned Data"
+author: "Nikhil Kalathil"
+date: "08/01/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document takes manually checked data on domestic manufacturing locations, builds a geocoded company-location-address base sheet to reference all files against, creates a few summary graphs, and formats the data to be used in leaflet mapping. 
+
+```{r, include == FALSE }
+library(tidyverse)
+library(tidytext)
+library(RColorBrewer)
+library(ggthemes)
+library(tm)
+library(here)
+library(ggrepel)
+library(lubridate)
+library(ggnewscale)
+library(readxl)
+library(htmltools)
+library(htmlwidgets)
+library(RJSONIO)
+```
+```{r}
+
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/"
+
+```
+
+```{r}
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+```
+
+
+
+```{r}
+thomas_an <- readRDS(here("Data/Cleaned/fm_resp.RDS"))
+int_prod <- readRDS(here("Data/Cleaned/int_prod.RDS"))
+```
+
+```{r}
+int_prod <- int_prod %>% 
+  mutate(company = if_else(company == "Precision Custom Coatings LLC", "Precision Textiles", company),
+         company = if_else(str_detect(company, "Alliance Rubber"), "Alliance Rubber Company", company)
+         )
+```
+
+
+```{r}
+thomas_struc <- bind_rows(int_prod, thomas_an) %>% 
+  mutate(company = case_when(
+    str_detect(company, "United Sewing Automation") ~ "United Sewing Automation, Inc.", 
+    TRUE ~ company
+  ), 
+  company = case_when(
+    str_detect(company, "Shawmut") ~ "Shawmut Corporation",
+    TRUE ~ company
+  ),
+  company = case_when(
+    str_detect(company, "Honeywell") ~ "Honeywell Safety Products", 
+    TRUE ~ company
+  ), 
+  company = case_when(
+    str_detect(company, fixed("pzero", ignore_case = TRUE)) ~ "PZero Innovations Inc.", 
+    TRUE ~ company
+  )) %>% 
+  mutate(broad_loc = case_when(
+    str_detect(broad_loc, "Manuf") ~ "Manufacturer", 
+    str_detect(broad_loc, "Dist") ~ "Distributor",
+    TRUE ~ "Other/Unknown"
+  ), 
+  broad_loc = case_when(
+    str_detect(desc, fixed("distributor", ignore_case = TRUE)) & str_detect(desc, fixed("manufacturer", ignore_case = TRUE), negate = TRUE) ~ "Distributor", 
+    TRUE ~ broad_loc
+  )) %>%  
+  mutate(useful == if_else(company %in% c("Prestige Ameritech", "Huajian US Services, Corp", "Bossong Hosiery Mills, Inc."), "Affirmatively", useful)) %>% 
+  group_by(specific_product, company, date) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1)
+```
+
+# Importing Manually Checked Data
+
+We begin with importing manually checked data for each product category. 
+
+```{r}
+aff_comps <- thomas_struc %>% 
+  filter(specific_product != "NA", broad_loc == "Manufacturer" ) %>% 
+  mutate(useful = case_when(
+    is.na(useful) ~ "Unknown", 
+    TRUE ~ useful
+  )) %>%
+  filter(useful == "Affirmatively") %>% 
+  mutate(company = if_else(company == "Monadnock Paper Mills, Inc.", "Monadnock Non-Wovens LLC", company),
+         company = if_else(company == "Consolidated Cordage Corporation", "Consolidated Cordage Corp.", company) ,
+         company = if_else(str_detect(company, "Guardsman Gl"), "Guardsman Global", company), 
+         company = if_else(str_detect(company, "USAmedical"), "USA Medical Supply", company)) 
+```
+
+## Importing Data 
+
+```{r}
+conf_nl <- read_xlsx(box_here("manf_comps.xlsx"), sheet = "No Latex") %>% 
+    filter(useful == "Affirmatively" | is.na(useful)) %>% 
+  select(-(5:17)) %>% 
+  mutate(from = 1, 
+         specific_product = "No Latex Elastic",
+         dom_useful = as.character(dom_useful))
+```
+
+
+```{r}
+conf_nw <- read_xlsx(box_here("manf_comps.xlsx"), sheet = "Non Woven") %>% 
+  filter(useful == "Affirmatively" | is.na(useful)) %>% 
+  select(-(5:17)) %>% 
+  mutate(from = 1, 
+         specific_product = "Non-Woven Fabric")
+```
+
+```{r}
+conf_resp <- read_xlsx(box_here("manf_comps.xlsx"), sheet = "Respirator Only") %>% 
+  filter(useful == "Affirmatively" | is.na(useful)) %>% 
+  select(-(6:18)) %>% 
+  mutate(from = 1, 
+         specific_product = "Respirators Only") 
+```
+
+```{r}
+conf_fm <- read_xlsx(box_here("manf_comps.xlsx"), sheet = "FM Only") %>% 
+  filter(useful == "Affirmatively" | is.na(useful)) %>% 
+  select(-(6:18)) %>% 
+  mutate(from = 1, 
+         specific_product = "Face Masks Only") 
+```
+
+```{r}
+conf_fmresp <- read_xlsx(box_here("manf_comps.xlsx"), sheet = "Resp & FM") %>% 
+  filter(useful == "Affirmatively" | is.na(useful)) %>% 
+  select(-(6:18)) %>% 
+  mutate(from = 1, 
+         specific_product = "Respirators and Face Masks") 
+```
+
+### Check for Each Product and Write New Entries to a CSV
+
+#### NL Tests
+```{r}
+aff_nl <- aff_comps %>% 
+  filter(specific_product == "No Latex Elastic") %>% 
+  left_join(conf_nl)
+```
+```{r}
+aff_nl %>% 
+  filter(is.na(from)) %>% 
+  view()
+```
+
+```{r}
+aff_nl %>% 
+  group_by(specific_product, date) %>% 
+  count()
+```
+
+#### NW Tests
+```{r}
+aff_nw <- aff_comps %>% 
+  filter(specific_product == "Non-Woven Fabric") %>% 
+  left_join(conf_nw)
+```
+
+```{r}
+aff_nw %>% 
+  filter(is.na(from)) %>% 
+  view()
+```
+
+```{r, eval = FALSE}
+aff_nw %>% 
+  filter(is.na(from)) %>% 
+  write_csv(box_here("new_comps.csv"))
+```
+
+```{r}
+aff_nw %>% 
+  group_by(specific_product, date) %>% 
+  count()
+```
+
+```{r}
+aff_nw <- aff_nw %>% 
+  group_by(company, date) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1)
+```
+
+
+#### Resp only tests
+```{r}
+aff_resp <- aff_comps %>% 
+  filter(specific_product == "Respirators Only") %>% 
+  left_join(conf_resp)
+```
+```{r}
+aff_resp %>% 
+  filter(is.na(from)) %>% 
+  view()
+```
+
+```{r, eval = FALSE}
+aff_resp %>% 
+  filter(is.na(from)) %>% 
+  write_csv(box_here("new_comps.csv"))
+```
+
+
+```{r}
+aff_resp %>% 
+  group_by(specific_product, date) %>% 
+  count()
+```
+
+
+
+```{r}
+aff_resp <- aff_resp %>% 
+  group_by(company, date) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1)
+```
+
+#### FM Only Tests
+```{r}
+aff_fm <- aff_comps %>% 
+  filter(specific_product == "Face Masks Only") %>% 
+  left_join(conf_fm)
+```
+```{r}
+aff_fm %>% 
+  filter(is.na(from)) %>% 
+  view()
+```
+
+```{r}
+aff_fm %>% 
+  group_by(specific_product, date) %>% 
+  count()
+```
+
+```{r, eval = FALSE}
+aff_fm %>% 
+  filter(is.na(from)) %>% 
+  write_csv(box_here("new_comps.csv"))
+```
+```{r}
+aff_fm <- aff_fm %>% 
+  group_by(company, date) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1)
+```
+
+#### FM+RESP Tests
+```{r}
+aff_fmresp <- aff_comps %>% 
+  filter(specific_product == "Respirators and Face Masks") %>% 
+  left_join(conf_fmresp) %>% 
+    mutate(company = if_else(company == "RPB Safety", "RPB Safety, LLC.", company),
+           company = if_else(company == "PZero Inc.", "PZero Innovations Inc.", company),
+           company = if_else(company == "Pzero Innovations Inc.", "PZero Innovations Inc.", company),
+           company = if_else(company == "Rhysley Ltd.", "Rhysley, Ltd.", company),
+           company = if_else(company == "Y-Not Design & Mfg. Inc", "Y-Not Design & Mfg. Inc.", company), 
+           company = if_else(company == "Lynktrac Technologies, LLC", "LynkTrac Technologies, LLC", company),
+           company = if_else(company == "Cura, a Division of CustomFab USA", "Ceemly, a Division of CustomFab USA", company)) 
+```
+
+```{r}
+aff_fmresp %>% 
+  filter(is.na(from)) %>% 
+  view()
+```
+
+```{r, eval = FALSE}
+aff_fmresp %>% 
+  filter(is.na(from)) %>%
+  select(-c("cat_1", "cat_2", "cat_3")) %>% 
+  write_csv(box_here("new_comps.csv"))
+```
+
+
+```{r}
+aff_fmresp %>% 
+  group_by(specific_product, date) %>% 
+  count()
+```
+
+```{r}
+aff_fmresp <- aff_fmresp %>% 
+  group_by(company, date) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1)
+```
+
+
+
+### Combine and Graph 
+
+```{r}
+all_dom <- bind_rows(aff_fm, aff_resp) %>% 
+  bind_rows(aff_fmresp) %>% 
+  mutate(company = if_else(company == "Grayko", "GrayKo", company)) %>% 
+  mutate(specific_product = if_else(company %in% c("Safe Health", "Luosh USA, LLC", "PandMedic Solutions", "Alpha Pro Tech, Ltd.", "Guardis Medical
+", "Phenotype Pharmaceuticals", "Sanitizing Solutions", "Maine-Lee Technology Group, LLC / EZ-Glider", "Pureco USA, LLC"), "Respirators and Face Masks", specific_product),
+specific_product = if_else(company %in% c("United States Mask", "United Safety Technology Inc.", "Oxystrap International", "Shawmut Corporation", "Protective Health Gear"), "Respirators Only", specific_product),
+specific_product = if_else(company %in% c("Guardis Medical", "Hero Life Sciences, Inc.", "PZero Innovations Inc.", "Sanctuary Systems, LLC", "SpinTech, LLC", "Acropure"), "Face Masks Only", specific_product)) %>% 
+  bind_rows(aff_nl) %>% 
+  bind_rows(aff_nw) %>% 
+  group_by(company, specific_product, date) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1)
+```
+
+For each product, for companies that list themselves as affirmatively producing a standard FDA product for surgical grade masks/respirators, we have manually checked every entry. We export these data and manually impute firmographic information from D&B Hoovers. 
+
+```{r}
+all_dom %>% 
+  ungroup() %>% 
+  select(company, dom_useful, FLAG, manf_loc, address, parent_ownership, specific_product, date, useful, corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS, employees, date_founded, sales) %>% 
+  group_by(company, specific_product) %>% 
+  mutate(min_date = min(ymd(date)),
+         max_date = max(ymd(date))) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  saveRDS(box_here("validated.RDS"))
+```
+
+```{r}
+all_dom %>% 
+  ungroup() %>% 
+  select(company, dom_useful, FLAG, manf_loc, address, parent_ownership, specific_product, date, useful, corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS, employees, date_founded, sales) %>%
+  group_by(company, specific_product) %>% 
+  mutate(min_date = min(ymd(date)),
+         max_date = max(ymd(date))) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1) %>%
+  write_csv(box_here("confirmed_domestic.csv"))
+```
+
+
+```{r}
+confirmed_dbh <- read_csv(box_here("confirmed_domestic_dbh.csv")) %>% mutate(checked = 1) %>% mutate(
+  across(where(is.numeric), ~ case_when(. == "NA" ~ NA_real_,
+                                        TRUE ~as.numeric(.))), 
+  across(where(is.character), ~ case_when(. == "NA" ~ NA_character_,
+                                        TRUE ~as.character(.)))) %>% 
+  filter(dom_useful == 1)
+
+```
+
+We save our imputed data to merge later. 
+
+## Combining With All Thomasnet
+
+```{r}
+dom_to_thomas <- all_dom %>% 
+  ungroup() %>% 
+  select(-c(corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS, employees, date_founded, sales))
+```
+
+```{r}
+thomas_clean <- thomas_struc %>% 
+  filter(specific_product != "NA", broad_loc == "Manufacturer" ) %>% 
+  mutate(useful = case_when(
+    is.na(useful) ~ "Unknown", 
+    TRUE ~ useful
+  )) %>%
+  filter(useful != "Affirmatively") %>% 
+  mutate(company = if_else(company == "Monadnock Paper Mills, Inc.", "Monadnock Non-Wovens LLC", company),
+         company = if_else(company == "Consolidated Cordage Corporation", "Consolidated Cordage Corp.", company) ,
+         company = if_else(str_detect(company, "Guardsman Gl"), "Guardsman Global", company), 
+         company = if_else(str_detect(company, "USAmedical"), "USA Medical Supply", company)) %>%
+  bind_rows(dom_to_thomas) %>% 
+  mutate(company = if_else(company == "Moss", "Moss Inc.", company), 
+         company = if_else(str_detect(company, "AmeriShield"), "Premium PPE - Amerishield", company)) 
+```
+
+We convert our manually entered validated domestic columns into numeric variables. We then define a unique company entry as a company supplier listing for a specific product at a specific level of usefuleness. This will allow us to understand how companies changed their descriptions of themselves over time. 
+
+```{r}
+thomas_clean_simple <- thomas_clean %>% 
+  group_by(company) %>% 
+  mutate(dom_useful_num = case_when(
+    dom_useful == "1" ~ 1, 
+    is.na(dom_useful) ~ -2, 
+    dom_useful %in% c("Possibly") ~ -1, 
+    dom_useful %in% c("0") ~ 0,
+  ) ,
+  manf_loc_num = case_when(
+    manf_loc == 1 ~ 1, 
+    is.na(manf_loc) ~ -1,
+    manf_loc == 0 ~ 0 
+  )) %>% 
+  mutate(dom_useful_num = max(dom_useful_num, na.rm = TRUE), 
+         manf_loc = max(manf_loc_num, na.rm = TRUE)) %>% 
+  select(company, location, useful, date, specific_product, dom_useful_num, manf_loc, desc, address, date_founded, sales, employees, FLAG) %>% 
+  group_by(company, specific_product, useful) %>% 
+  mutate(min_date = min(ymd(date)),
+         max_date = max(ymd(date))) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  select(-c(tal)) %>% 
+  mutate(thomasnet = 1)
+```
+
+```{r}
+saveRDS(thomas_clean_simple, box_here("thomas_clean.RDS"))
+```
+
+We now impute our data from DB Hoovers. 
+
+## Combining DB Hoovers and Thomasnet 
+
+```{r}
+dbh_merge <- confirmed_dbh %>% 
+  mutate(company = if_else(company == "Moss", "Moss Inc.", company), 
+         company = if_else(str_detect(company, "AmeriShield"), "Premium PPE - Amerishield", company)) %>% 
+  select(company, DUNS, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, corporate_family_dbh)
+```
+
+```{r}
+thomas_dbh <- thomas_clean_simple %>% 
+  left_join(dbh_merge)
+```
+
+```{r}
+thom_dbh <- thomas_dbh %>% 
+  select(-c(address))
+
+thomas_dbh <- thomas_dbh %>% 
+  ungroup() %>% 
+  select(company, address) %>% 
+  filter(!is.na(address)) %>% 
+  left_join(thom_dbh, .)
+```
+
+We now simplify our list of companies 
+
+```{r}
+thomas_dbh_clean <- thomas_dbh %>% 
+  mutate(company = case_when(
+    str_detect(company, "MSA") ~ "MSA Safety, Inc.", 
+    str_detect(company, "Drager") ~ "Draeger Inc.",
+    str_detect(company, "CustomFab") ~ "CustomFab USA, Inc.",
+    str_detect(DUNS, "14-424-0728") ~ "NFI Masks LLC",
+    str_detect(company, "Readi") | str_detect(company, "Global Safety First") ~ "Global Safety First",
+    TRUE ~ company
+  )) %>% 
+  mutate(num_useful = case_when(
+      useful == "Affirmatively" ~ 3,
+      useful == "Possibly" ~ 2,
+      useful == "Unknown" ~ 1,
+      is.na(useful) ~ 0
+    )) %>% 
+  group_by(company) %>% 
+  mutate(min_date = min(min_date),
+         max_date = max(max_date), 
+         min_aff = case_when(
+           useful == "Affirmatively" ~ min(min_date))) %>%  
+  mutate(min_aff = max(min_aff, na.rm = TRUE), 
+    max_useful = max(num_useful, na.rm = TRUE)) %>% 
+  mutate(useful = case_when(
+    max_useful == 3 ~ "Affirmatively", 
+    max_useful == 2 ~ "Possibly", 
+    max_useful == 1 ~ "Unknown", 
+    max_useful == 0 ~ "Missing"
+  )) %>% 
+  mutate(tot_entries = n()) %>% 
+  filter(specific_product != "Cloth Masks") %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  select(-c(tal)) 
+```
+
+```{r}
+aime <- thomas_dbh_clean %>% 
+  filter(str_detect(company, fixed("aime", ignore_case = TRUE))) %>% 
+  mutate(company = "Aime, LLC") %>% 
+  group_by(company) %>% 
+  mutate(min_date = min(min_date),
+         max_date = max(max_date), 
+         min_aff = case_when(
+           useful == "Affirmatively" ~ min(min_date)), 
+         tal = seq(n())) %>% 
+  filter(tal == 2)
+
+thomas_dbh_clean <- thomas_dbh_clean %>% 
+  filter(!str_detect(company, fixed("aime", ignore_case = TRUE))) %>%
+  bind_rows(aime) 
+```
+
+```{r}
+conf_dom <- thomas_dbh %>% 
+  ungroup() %>% 
+  filter(dom_useful_num == 1) %>% 
+  select(company, address, desc, specific_product, date, specific_product, date_founded, sales, employees, manf_loc, corporate_family_dbh, all_site_emp_dbh, sales_dbh, DUNS)
+```
+
+## Import USBDM Data
+
+```{r}
+amma <- read_xlsx(box_here("usabdm_list.xlsx")) %>% 
+  mutate(amma = 1) %>% 
+  select(-c(interview, vertical, '...5'))
+```
+
+## Merge with Thomasnet Data
+
+```{r}
+anti_thomas_amma <- anti_join(amma, thomas_dbh_clean, by = c("company")) %>% 
+  select(company, specific_product = specific_product_bdm, 
+         address = address_man,
+         corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS, 
+         manf_loc_amma, 
+         amma, bdm_country) %>% 
+  filter(company != "Other", bdm_country == "USA") %>% 
+  mutate(bdm_country = "US")
+```
+
+```{r}
+thomas_amm1 <- thomas_dbh_clean %>% 
+  filter(useful == "Affirmatively") %>% 
+  left_join(amma)
+
+thomas_amm2 <- thomas_dbh_clean %>% 
+  filter(useful != "Affirmatively") %>% 
+  select(-c(corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS)) %>% 
+  left_join(amma)
+
+thomas_amma <- bind_rows(thomas_amm1, thomas_amm2) %>% 
+  bind_rows(anti_thomas_amma)
+```
+
+```{r}
+thomas_amma %>% 
+  select(company, specific_product, useful, amma, dom_useful_num, manf_loc, min_date, max_date, date, thomasnet, DUNS, amma) %>% 
+  view()
+```
+
+```{r}
+match1_clean <- thomas_amma %>% 
+  ungroup() %>% 
+  select(company, location, specific_product, useful, amma, dom_useful_num, manf_loc, min_date, max_date, min_aff, date, desc, bdm_country, address, address_man, manf_loc_amma, thomasnet, corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS, tot_entries) %>% 
+  mutate(dom_useful_mark = dom_useful_num, 
+         dom_useful_num = case_when(
+    amma == 1 | dom_useful_num == 1 ~ 1, 
+    TRUE ~ dom_useful_num), 
+         manf_loc = case_when(
+           manf_loc_amma == 1 ~ manf_loc_amma, 
+           TRUE ~ manf_loc))  %>% 
+  mutate(DUNS = str_trim(gsub("-", "", DUNS)),
+        DUNS = case_when(
+    str_detect(company, "Premium PPE - Amerishield") ~ "XX-01", 
+    TRUE ~ DUNS
+  ))
+```
+
+## Bring in Interviews
+
+```{r}
+remove <- c("Limited" ,"Ltd", "LTD", "Incorporated", "Company",  "Corporation", "Co", "Inc",  "[[:punct:]]", "LLC")
+```
+```{r}
+interviews <- readRDS(box_here("interviews.RDS")) %>% 
+  filter(!str_detect(company, "Honeywell")) %>% 
+  select(DUNS, company) %>% 
+  mutate(interview = 1) %>% 
+  mutate(comp_match = tolower(str_trim(str_remove_all(company, paste(remove, collapse = "|")))), 
+         DUNS = case_when(
+    str_detect(company, "Premium-PPE Amerishield") ~ "XX-01", 
+    TRUE ~ DUNS)) %>% 
+  select(-c(company))
+```
+
+```{r}
+int_sample_holder <- match1_clean %>% 
+  filter(!str_detect(company, "Honeywell")) %>% 
+  left_join(interviews)
+```
+```{r}
+int_anti <- readRDS(box_here("interviews.RDS")) %>% 
+  select(company, corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS) %>%
+  anti_join(int_sample_holder, by = "DUNS") %>% 
+  filter(!str_detect(company, "Honeywell"))  %>% 
+  mutate(interview = 1)
+```
+
+```{r}
+int_honeywell <- readRDS(box_here("interviews.RDS")) %>% 
+  select(company, corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS) %>% 
+  mutate(interview = 1) %>% 
+  mutate(company = case_when(
+    str_detect(company, "Honeywell") ~ "Honeywell Safety Products",
+    TRUE ~ company
+  )) %>% 
+  filter(str_detect(company, "Honeywell"))
+```
+
+```{r}
+int_sample <- match1_clean %>% 
+  filter(str_detect(company, "Honeywell")) %>% 
+  select(-c(corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS)) %>% 
+  left_join(int_honeywell) %>% 
+  bind_rows(int_sample_holder) %>% 
+  bind_rows(int_anti)
+```
+
+```{r}
+int_sample_clean <- int_sample %>% 
+  mutate(interview = case_when(
+    str_detect(company, "Tex-Care") | str_detect(company, "Global Safety First") | str_detect(company, "MME group") ~ 1, 
+    TRUE ~ interview), 
+    company = case_when(
+      DUNS == "117986953" ~ "US Meltblown", 
+      DUNS == "832447812" ~ "General Motors", 
+      DUNS == "061756185" ~ "Avery Dennison", 
+      TRUE ~ company
+    ),
+    specific_product = case_when(
+      str_detect(company, "NYPPE") | str_detect(company, "General Motors")  ~ "Respirators and Face Masks", 
+      str_detect(company, "Fischer") ~ "Face Masks Only", 
+      str_detect(company, "Avery") ~ "Respirators Only", 
+      str_detect(company, "US Meltblown") ~ "Non-Woven Fabric", 
+      TRUE ~ specific_product
+    ), 
+    broad_product = case_when(
+      specific_product %in% c("Face Masks Only", "Respirators Only", "Respirators and Face Masks") ~ "Respirators and/or Face Masks", 
+      specific_product %in% c("Non-Woven Fabric", "No Latex Elastic") ~ "Intermediary Product"
+    ))
+```
+
+## Bring in Regulatory Approvals 
+
+```{r}
+all_reg <- readRDS(box_here("FDA/all_reg.RDS")) %>% 
+  mutate(DUNS = str_trim(gsub("-", "", DUNS)),
+        DUNS = case_when(
+    str_detect(APPLICANT, "Premium-PPE ") ~ "XX-01", 
+    str_detect(APPLICANT, "Secured Ortho") ~ "25",
+    TRUE ~ DUNS
+  ), 
+  APPLICANT = case_when(
+    str_detect(APPLICANT, "Thrace") ~ "Thrace-LINQ, Inc", 
+    str_detect(APPLICANT, "Moldex") ~ "Moldex",
+    TRUE ~ APPLICANT
+  )) %>% 
+  select(corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS, reg_type, ddate, APPLICANT, COUNTRY_CODE, private_us_subsidiary) %>% 
+  filter(year(ddate)> 2019, COUNTRY_CODE == "US" | private_us_subsidiary == 1) %>% 
+  mutate(comp_match = tolower(str_trim(str_remove_all(APPLICANT, paste(remove, collapse = "|"))))) %>% 
+  group_by(comp_match, reg_type) %>% 
+  mutate(min_appr = min(ddate), 
+         tot_appr = n()) %>% 
+  ungroup() %>% 
+  select(corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS, comp_match, min_appr, COUNTRY_CODE, reg_type, tot_appr) %>% 
+  distinct()
+```
+
+```{r}
+reg_distinct <- all_reg %>% 
+  select(-c(tot_appr)) %>% 
+  mutate(reg_type = case_when(
+    str_detect(reg_type, "NIOSH") ~ "niosh", 
+    str_detect(reg_type, "510") ~ "fda_510", 
+    str_detect(reg_type, "EUA") ~ "eua"
+  )) %>% 
+  pivot_wider(id_cols = -c("reg_type", "min_appr"), names_from = c("reg_type"), values_from = c("min_appr"))
+```
+
+```{r}
+merge2_holder <- int_sample_clean %>% 
+  select(-c(comp_match)) %>% 
+  filter(!is.na(DUNS)) %>% 
+  left_join(reg_distinct)
+  
+```
+
+```{r}
+merge2_anti <- anti_join(reg_distinct, merge2_holder)
+```
+
+```{r}
+merge2 <- int_sample_clean %>% 
+  filter(is.na(DUNS)) %>% 
+  mutate(comp_match = tolower(str_trim(str_remove_all(company, paste(remove, collapse = "|"))))) %>% 
+  select(-c(corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS)) %>% 
+  full_join(merge2_anti) %>% 
+  bind_rows(merge2_holder) %>% 
+  mutate(niosh = case_when(
+    str_detect(company, "Avery") ~ mdy("01/21/2021"), 
+    TRUE ~ as.Date(niosh)
+  ))
+```
+```{r}
+merge2 %>% filter(!is.na(niosh) | !is.na(fda_510) | !is.na(eua), is.na(company)) %>% view()
+```
+
+### FUNCTION TEST
+
+```{r}
+dbinfo_merge <- function(data1, data2) { 
+  
+  merge_holder <- data1 %>% 
+  select(-c(comp_match)) %>% 
+  filter(!is.na(DUNS)) %>% 
+  left_join(data2) 
+  
+  merge_anti <- anti_join(data2, merge_holder)
+  
+  merge <- data1 %>% 
+  filter(is.na(DUNS)) %>% 
+  mutate(comp_match = tolower(str_trim(str_remove_all(company, paste(remove, collapse = "|"))))) %>% 
+  select(-c(corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS)) %>% 
+  full_join(merge_anti) %>% 
+  bind_rows(merge_holder)
+  
+  return(merge)
+  
+  }
+```
+
+```{r}
+merge3 <- dbinfo_merge(int_sample_clean, reg_distinct)
+```
+
+```{r}
+anti_join(merge2, merge3)
+```
+
+
+## Bring in Contracts
+
+```{r}
+covid_contracts <- readRDS(box_here("/contracts/covid_contracts.RDS")) %>% 
+  rename(numeric_duns = recipient_duns) %>% 
+  mutate(numeric_duns = case_when(
+    str_detect(company, "FEDERAL PRISON") ~ 626627459,
+    str_detect(company, "AURORA") ~ 079538271, 
+    str_detect(company, "FEDERAL RESOURCES") ~ 091235377, 
+    str_detect(company, "FISHER SCIENTIFIC") ~ 004321519, 
+    str_detect(company, "RELIANCE WHOLESALE") ~ 613048789,
+    str_detect(company, "HONEYWELL") ~ 139691877,
+    str_detect(company, "LYDALL") ~ 001139963,
+    str_detect(company, "CROSSTEX") ~ 057728685,
+    TRUE ~ numeric_duns
+  ), 
+  company = case_when(
+    numeric_duns == 44549434 ~ "Draeger Inc.", 
+    numeric_duns == 66237736 ~ "Moldex", 
+    numeric_duns == 116926824 ~ "MSA Saftey, Inc.",
+    TRUE ~ company
+  )) %>% 
+  group_by(numeric_duns) %>% 
+  mutate(first_contract = min(solicitation_date), 
+         total_contracts = n(), 
+         total_dollars = sum(total_dollars_obligated), 
+         tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  select(contract_comp = company, numeric_duns, first_contract, total_contracts, total_dollars, company_category)
+```
+
+```{r}
+length(unique(covid_contracts$numeric_duns))
+```
+SAME SHIT AS ABOVE -- DO IT RIGHT
+
+```{r}
+merge3_holder <- merge2 %>% 
+  filter(!is.na(DUNS)) %>% 
+  mutate(numeric_duns = as.numeric(DUNS)) %>% 
+  left_join(covid_contracts)
+```
+```{r}
+merge3_anti <- anti_join(covid_contracts, merge3_holder) %>% 
+  mutate(comp_match = tolower(str_trim(str_remove_all(tolower(contract_comp), paste(tolower(remove), collapse = "|")))))
+```
+
+```{r}
+merge3 <- merge2 %>% 
+  filter(is.na(DUNS)) %>% 
+  left_join(merge3_anti) %>% 
+  bind_rows(merge3_holder)
+```
+
+## Finalizing the Sample
+
+```{r}
+reg_names <- readRDS(box_here("FDA/all_reg.RDS")) %>% 
+  filter(COUNTRY_CODE == "US") %>% 
+  mutate(DUNS = str_trim(gsub("-", "", DUNS)),
+        DUNS = case_when(
+    str_detect(APPLICANT, "Premium-PPE ") ~ "XX-01", 
+    str_detect(APPLICANT, "Secured Ortho") ~ "25",
+    TRUE ~ DUNS
+  ), 
+  APPLICANT = case_when(
+    str_detect(APPLICANT, "Thrace") ~ "Thrace-LINQ, Inc", 
+    str_detect(APPLICANT, "Moldex") ~ "Moldex",
+    TRUE ~ APPLICANT
+  )) %>% 
+  select(APPLICANT, DUNS) %>% 
+  mutate(comp_match = tolower(str_trim(str_remove_all(APPLICANT, paste(remove, collapse = "|"))))) %>% 
+  distinct() %>% 
+  group_by(DUNS) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  select(-c(tal)) %>% 
+  ungroup()
+```
+
+```{r}
+matched_sample <- merge3 %>% 
+  left_join(reg_names) %>% 
+  mutate(company = case_when(
+    is.na(company) & !is.na(APPLICANT) ~ APPLICANT, 
+    TRUE ~ company
+  ), 
+  niosh_counter = !is.na(niosh),
+  fda_counter = !is.na(fda_510) | !is.na(eua),
+  contract_counter = !is.na(first_contract), 
+  specific_product = case_when(
+    is.na(specific_product) & niosh_counter == 1 & fda_counter == 1 ~ "Respirators and Face Masks", 
+    is.na(specific_product) & niosh_counter == 1 & fda_counter != 1 ~ "Respirators Only", 
+    is.na(specific_product)  & niosh_counter == 0 & fda_counter == 1 ~ "Face Masks Only", 
+    TRUE ~ specific_product
+  )) %>% 
+  mutate(broad_product = case_when(
+    specific_product %in% c("Respirators Only", "Respirators and Face Masks", "Face Masks Only") ~ "End Product", 
+    specific_product %in% c("Non-Woven Fabric", "No Latex Elastic") ~ "Intermediary Product")) %>% 
+  mutate(broad_product = case_when(
+    broad_product == "Intermediary Product" & niosh_counter == 1 ~ "End Product", 
+    broad_product == "Intermediary Product" & fda_counter == 1 ~ "End Product", 
+    TRUE ~ broad_product
+  ))
+```
+```{r}
+matched_sample %>% filter(!is.na(DUNS) | !is.na(numeric_duns) | str_detect(company, "MME group"), is.na(atsite_emp_dbh)) %>%  select(company, DUNS, numeric_duns, comp_match) %>% write_csv(box_here("matched_sample_supp.csv"))
+```
+
+```{r}
+sample_extra <- read_csv(box_here("matched_sample_dbh.csv")) %>% 
+  mutate(DUNS = str_trim(gsub("-", "", DUNS)))
+```
+
+```{r}
+matched_holder <- anti_join(matched_sample, sample_extra, by = c("company", "comp_match", "numeric_duns")) %>% 
+  filter(!str_detect(company, "MME group"))
+```
+
+
+```{r}
+final_sample <- matched_sample %>% 
+  filter(!is.na(DUNS) | !is.na(numeric_duns) | str_detect(company, "MME group"), is.na(atsite_emp_dbh)) %>% 
+  select(-c(corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS, numeric_duns)) %>% 
+  left_join(sample_extra) %>% 
+  bind_rows(matched_holder) 
+```
+```{r}
+reg_address <- readRDS(box_here("FDA/all_reg.RDS")) %>% 
+  filter(COUNTRY_CODE == "US") %>% 
+  mutate(DUNS = str_trim(gsub("-", "", DUNS)),
+        DUNS = case_when(
+    str_detect(APPLICANT, "Premium-PPE ") ~ "XX-01", 
+    str_detect(APPLICANT, "Secured Ortho") ~ "25",
+    TRUE ~ DUNS
+  ), 
+  APPLICANT = case_when(
+    str_detect(APPLICANT, "Thrace") ~ "Thrace-LINQ, Inc", 
+    str_detect(APPLICANT, "Moldex") ~ "Moldex",
+    TRUE ~ APPLICANT
+  )) %>% 
+  select(DUNS, fda_address = address, STATE) %>% 
+  filter(!is.na(fda_address) | !is.na(STATE))
+```
+
+```{r}
+final_sample <- final_sample %>% 
+  left_join(reg_address) %>% 
+  mutate(address = case_when(
+    is.na(address) & !is.na(fda_address) ~ fda_address, 
+    TRUE ~ address
+  ))
+```
+```{r}
+final_sample  %>% saveRDS(box_here("matched_sample.RDS"))
+```
+
+
+## Geocoding
+
+```{r}
+matched_sample <- readRDS(box_here("matched_sample.RDS"))
+```
+
+
+```{r}
+sample_address <- matched_sample %>% 
+  select(company, DUNS, numeric_duns, address, location, address_man) %>%
+  mutate(location = case_when(
+    str_detect(location, "Multiple Locs") ~ " ", 
+    TRUE ~ location
+  ), 
+    address = case_when(
+    is.na(address) & !is.na(address_man) ~ address_man, 
+    is.na(address) & !is.na(location) ~ location, 
+    TRUE ~ address
+  ), 
+  address = paste(company, address, "USA", sep = ", "))
+```
+
+
+```{r, echo = FALSE, Include = FALSE}
+api_key <- c("YOUR_KEY")
+```
+
+We define our function, which will take an address as an input and output a latitude and longitude result. 
+
+```{r}
+geocodeAddress <- function(address) {
+  require(RJSONIO)
+  url <- "https://maps.googleapis.com/maps/api/geocode/json?address="
+  url <- URLencode(paste(url, address, sep = ""))
+  url <- URLencode(paste(url, "&key=", api_key, sep = ""))
+  x <- fromJSON(url, simplify = FALSE)
+  print(x$status)
+  if (x$status == "OK") {
+    out <- c(x$results[[1]]$geometry$location$lng,
+             x$results[[1]]$geometry$location$lat,
+             x$results[[1]]$formatted_address)
+  } else {
+    out <- NA
+  }
+  Sys.sleep(0.2)  # API only allows 5 requests per second
+  out
+}
+```
+
+
+```{r, include = FALSE}
+for(i in 1:nrow(sample_address))
+{
+  result <- geocodeAddress(sample_address$address[i])
+  sample_address$long[i] <- as.numeric(result[1])
+  sample_address$lat[i] <- as.numeric(result[2])
+  sample_address$form_address[i] <- as.character(result[3])
+
+}
+```
+
+```{r}
+sample_unmatched <- sample_address %>% 
+  filter(is.na(form_address))  %>% 
+  select(company, DUNS, numeric_duns, location)
+```
+
+```{r}
+unmatched_addresses <- c("90 State Street, Albany, New York, United States", 
+  "3116 Coleshire Dr, Richardson, Texas, United States", 
+  "11412 Se 31st Ave, Milwaukie, Oregon, United States", 
+  "901 N Pollard St, Arlington VA 22203", 
+  "",
+  "4500 140TH AVE. NORTH, CLEARWATER, FL, 33762", 
+  "275 Centre St, Holbrook, MA, United States", 
+  "975 Industrial Dr., Madison, Indiana 47250", 
+  "2823 Fuchsia Pl, Riverside, CA,  92503", 
+  "20784 Eskridge Ct, Sterling, VA, United States", 
+  "7814 Austin St Forest Hills, NY 11375", 
+  "32582 South Round Head Dr, Solon, Ohio, 44139, USA", 
+  "290 Industrial Drive, Hampshire, IL, United States", 
+  "8 The Green, Dover, DE, 19901", 
+  "865 NJ 33 Business, Freehold, NJ, 07728", 
+  "", 
+  "151 Calle de San Francisco Suite 201 SAN JUAN, Puerto Rico 00901", 
+  "3016 Venergy Drive, Brookshire, TX, 77423", 
+  "16727 Park Row, Houston, Texas, United States", 
+  "3411 Hawthorne Rd Pocatello, ID, United States", 
+  "1440 Koll Cir, San Jose, CA, United States",
+  "800 E Colorado Blvd, Pasadena, CA", 
+  "14271 Jeffrey Rd, Irvine, California",
+  "63 Flushing Ave, New York, New York", 
+  "161 Hill Ave Nw, Fort Walton Beach, FL")
+```
+
+```{r}
+sample_unmatched$address <- unmatched_addresses
+```
+
+```{r}
+sample_unmatched <- sample_unmatched %>% 
+  filter(address != "") %>% 
+  mutate(address = paste(company, address, "USA", sep = ", "))
+```
+
+```{r}
+for(i in 1:nrow(sample_unmatched))
+{
+  result <- geocodeAddress(sample_unmatched$address[i])
+  sample_unmatched$long[i] <- as.numeric(result[1])
+  sample_unmatched$lat[i] <- as.numeric(result[2])
+  sample_unmatched$form_address[i] <- as.character(result[3])
+
+}
+```
+```{r}
+sample_address_geocoded <- sample_address %>% 
+  filter(!is.na(form_address)) %>% 
+  bind_rows(sample_unmatched)
+```
+
+```{r}
+sample_geocoded_draft <- matched_sample %>% 
+  select(-c(address, location)) %>% 
+  left_join(sample_address_geocoded)
+```
+
+```{r}
+sample_geocoded_draft %>% 
+  saveRDS(box_here("geocoded_11222021.RDS"))
+```
+
+```{r}
+geocodeState <- function(long, lat) {
+  require(RJSONIO)
+  parameters <- str_c("&key=", api_key)
+  apiRequests <- iconv(str_c("https://maps.googleapis.com/maps/api/geocode/json?latlng=", lat, ",", long, parameters), "", "UTF-8")
+  x <- fromJSON(apiRequests, simplify = FALSE)
+  print(x$status)
+  if (x$status == "OK" & !is.null(x$results[[1]]$address_components)) {
+    
+    for(i in 1:length(x$results[[1]]$address_components)) {
+      check <- x$results[[1]]$address_components[[i]]$type[[1]]
+      
+      if (check == "administrative_area_level_1") {
+        print(check)
+        
+        out <- c(x$results[[1]]$address_components[[i]]$long_name,
+             x$results[[1]]$address_components[[i]]$short_name)
+      }
+    }
+  } else {
+    out <- NA
+  }
+  Sys.sleep(0.2)  # API only allows 5 requests per second
+  out
+}
+```
+
+```{r}
+x$results[[1]]$address_components[[3]]$type[[1]] == "administrative_area_level_1"
+```
+```{r}
+length(x$results[[1]]$address_components)
+```
+```{r}
+sample_geocoded_draft <- readRDS(box_here("geocoded_11222021.RDS"))
+```
+
+
+```{r}
+sample_states <- sample_geocoded_draft %>% 
+  filter(!is.na(lat))
+```
+
+```{r}
+for(i in 1:nrow(sample_states))
+{
+  result <- geocodeState(sample_states$long[i], sample_states$lat[i])
+  sample_states$state_name[i] <- as.character(result[1])
+  sample_states$state_abbr[i] <- as.character(result[2])
+
+}
+```
+
+```{r}
+sample_states %>% 
+  saveRDS(box_here("states_geocoded.RDS"))
+```
+
+
+```{r}
+for (i in 1:nrow(sample_states)) {
+  
+sample_states$min_date_all[i] <-  min(sample_states$min_date[i], sample_states$fda_510[i], sample_states$eua[i], sample_states$niosh[i], sample_states$first_contract[i], na.rm = TRUE)
+}
+```
+
+
+```{r}
+sample_states %>% 
+  filter(dom_useful_num == 1 | niosh_counter == TRUE | fda_counter == TRUE | contract_counter == TRUE | interview == 1) %>% 
+  select(company, address, state_name, dom_useful_num, min_date_all, min_date, min_aff, fda_510, eua, niosh, first_contract, niosh_counter, fda_counter, contract_counter, thomasnet, amma, specific_product, interview, sales_dbh, corporate_family_dbh, DUNS, numeric_duns) %>% 
+  view()
+```
+```{r}
+sample_states_clean <- sample_states %>% 
+  filter(dom_useful_num == 1 | niosh_counter == TRUE | fda_counter == TRUE | contract_counter == TRUE | interview == 1) %>% 
+  select(company, address, form_address, state_name, state_abbr, specific_product, dom_useful_num, min_date_all, min_date, min_aff, fda_510, eua, niosh, first_contract, niosh_counter, fda_counter, contract_counter, thomasnet, amma, interview, sales_dbh, corporate_family_dbh, DUNS, numeric_duns, broad_product)  
+```
+
+```{r}
+sample_states_clean %>% write_csv(box_here("state_sample.csv"))
+```
+
+```{r}
+sample_states_clean %>% saveRDS(box_here("state_sample.RDS"))
+```
+
+```{r}
+states_dbh <- read_csv(box_here("state_sample_update.csv")) %>% 
+  select(company, dom_useful_num)
+```
+
+```{r}
+sample_states_dbh <- sample_states_clean %>% 
+  select(-c(dom_useful_num)) %>% 
+  left_join(states_dbh)
+```
+
+```{r}
+matched_sample_states <- sample_states %>% 
+  mutate(indicator = dom_useful_num == 1 | niosh_counter == TRUE | fda_counter == TRUE | contract_counter == TRUE | interview == 1) %>% 
+  filter(is.na(indicator)) %>% 
+  bind_rows(sample_states_dbh)
+```
+
+```{r}
+matched_sample_states %>% saveRDS(box_here("matched_states.RDS"))
+```

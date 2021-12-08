@@ -40,8 +40,7 @@ box_here <- function(file) {
 ```
 
 
-
-### Federal Contracts 
+# Federal Contracts Clean
 
 We import our CSV of federal contracts and transactions. 
 
@@ -256,9 +255,9 @@ We then examine recipients of interest. These include top recipients in terms of
 ```{r}
 company <- unique(covid_contracts$company)
 
-distributors <- str_detect(company, "BENCO DENTAL") | str_detect(company, "HENRY SCHEIN") | str_detect(company, "MSC INDUSTRIAL DIRECT CO INC") | str_detect(company, "OFFICE DEPOT") | str_detect(company, "DENTAL HEALTH PRODUCTS INCORPORATED") | str_detect(company, "DOVE MEDICAL SUPPLY LLC") | str_detect(company, "PRACTICON, INC.") | str_detect(company, "THOMAS SCIENTIFIC, LLC") | str_detect(company, "DARBY DENTAL SUPPLY, LLC") | str_detect(company, "SARATOGA ADVISORS GROUP, LLC") | str_detect(company, "GRAINGER") | str_detect(company, "AMERICARE, LLC") | str_detect(company, "TRANSCENDENCE, INC.") | str_detect(company, "ASE DIRECT, INC.") | str_detect(company, "FASTENAL COMPANY") | str_detect(company, "FULTON SUPPLY COMPANY") | str_detect(company, "VAN TECH INDUSTRIES LLC")  | str_detect(company, "PACIFIC LINK INTERNATIONAL CORPORATION")  | str_detect(company, "CONCORDANCE HEALTHCARE SOLUTIONS LLC") | str_detect(company, "CLARK COLLECTION, LTD., THE") | str_detect(company, "TRI-PHARMA, INC.")
+distributors <- str_detect(company, "BENCO DENTAL") | str_detect(company, "HENRY SCHEIN") | str_detect(company, "MSC INDUSTRIAL DIRECT CO INC") | str_detect(company, "OFFICE DEPOT") | str_detect(company, "DENTAL HEALTH PRODUCTS INCORPORATED") | str_detect(company, "DOVE MEDICAL SUPPLY LLC") | str_detect(company, "PRACTICON, INC.") | str_detect(company, "THOMAS SCIENTIFIC, LLC") | str_detect(company, "DARBY DENTAL SUPPLY, LLC") | str_detect(company, "SARATOGA ADVISORS GROUP, LLC") | str_detect(company, "GRAINGER") | str_detect(company, "AMERICARE, LLC") | str_detect(company, "TRANSCENDENCE, INC.") | str_detect(company, "ASE DIRECT, INC.") | str_detect(company, "FASTENAL COMPANY") | str_detect(company, "FULTON SUPPLY COMPANY") | str_detect(company, "VAN TECH INDUSTRIES LLC")  | str_detect(company, "PACIFIC LINK INTERNATIONAL CORPORATION")  | str_detect(company, "CONCORDANCE HEALTHCARE SOLUTIONS LLC") | str_detect(company, "CLARK COLLECTION, LTD., THE") | str_detect(company, "PATTERSON COMPANIES, INC.") |  str_detect(company, "TRI-PHARMA, INC.") | str_detect(company, "VPL MEDICAL, INC.") | str_detect(company, "SAFEWARE") 
 
-gov_logistics <- str_detect(company, "TACTICAL & SURVIVAL SPECIALTIES, INC.") |  str_detect(company, "ATLANTIC DIVING SUPPLY, INC.") | str_detect(company, "GOVERNMENT SCIENTIFIC SOURCE, INC.") | str_detect(company, "WECSYS LLC") | str_detect(company, "FEDERAL RESOURCES SUPPLY COMPANY") | str_detect(company, "SCIENCE APPLICATIONS INTERNATIONAL CORPORATION") | str_detect(company, "METRO MEDICAL EQUIPMENT & SUPPLY, INC.") | str_detect(company, "ARS SALES AND SERVICES LLC") | str_detect(company, "PROAIM AMERICAS, LLC") | str_detect(company, "FEDERAL PRISON") | str_detect(company, "FEDERAL GOVERNMENT EXPERTS, LLC") | str_detect(company, "WRIGHT CONSULTANTS & ASSOCIATES LLC") | str_detect(company, "PREMIUM RX NATIONAL LLC") | str_detect(company, "VENERGY GROUP, LLC") | str_detect(company, "ANA SOURCING LLC") | str_detect(company, "RIDGE THOMAS GROUP, LLC") | str_detect(company, "APEX OMNISOURCE, LLC") | str_detect(company, "SZY HOLDINGS, LLC")
+gov_logistics <- str_detect(company, "TACTICAL & SURVIVAL SPECIALTIES, INC.") |  str_detect(company, "ATLANTIC DIVING SUPPLY, INC.") | str_detect(company, "GOVERNMENT SCIENTIFIC SOURCE, INC.") | str_detect(company, "WECSYS LLC") | str_detect(company, "FEDERAL RESOURCES SUPPLY COMPANY") | str_detect(company, "SCIENCE APPLICATIONS INTERNATIONAL CORPORATION") | str_detect(company, "METRO MEDICAL EQUIPMENT & SUPPLY, INC.") | str_detect(company, "ARS SALES AND SERVICES LLC") | str_detect(company, "PROAIM AMERICAS, LLC") | str_detect(company, "FEDERAL PRISON") | str_detect(company, "FEDERAL GOVERNMENT EXPERTS, LLC") | str_detect(company, "WRIGHT CONSULTANTS & ASSOCIATES LLC") | str_detect(company, "PREMIUM RX NATIONAL LLC") | str_detect(company, "VENERGY GROUP, LLC") | str_detect(company, "ANA SOURCING LLC") | str_detect(company, "RIDGE THOMAS GROUP, LLC") | str_detect(company, "APEX OMNISOURCE, LLC") | str_detect(company, "SZY HOLDINGS, LLC") | str_detect(company, "AVMEDICAL, LLC")
 
   
 major_manf <- str_detect(company, "3M") | 
@@ -269,24 +268,31 @@ major_manf <- str_detect(company, "3M") |
   str_detect(company, "CROSSTEX") | 
   str_detect(company, "PRESTIGE AMERITECH") |
   str_detect(company, "MEDLINE") | 
-  str_detect(company, "LYDALL") | str_detect(company, "CARDINAL HEALTH 200, LLC") 
+  str_detect(company, "LYDALL") | str_detect(company, "CARDINAL HEALTH 200, LLC") | str_detect(company, "Alpha Pro")
 
-other_manf <- str_detect(company, "HANESBRANDS INC.") | str_detect(company, "GVS FILTRATION INC.") | str_detect(company, "PARKDALE ADVANCED MATERIALS, INC.") | str_detect(company, "STRING KING LACROSSE LLC") | str_detect(company, "VPL MEDICAL, INC.") | str_detect(company, "H.C. CONTRACTING, INC.") | str_detect(company, "AURORA INDUSTRIES, LLC") | str_detect(company, "OUTDOOR RESEARCH, LLC")  | str_detect(company, "FAIRFIELD CHAIR COMPANY") | str_detect(company, "MOLNLYCKE HEALTH CARE US, LLC") | str_detect(company, "AVMEDICAL, LLC") | str_detect(company, "CARROLL WOODS, INC.") | str_detect(company, "HOLLINGSWORTH & VOSE COMPANY") | str_detect(company, "PATTERSON COMPANIES, INC.") | str_detect(company, "ORSA TECHNOLOGIES, LLC") | str_detect(company, "WELCH ALLYN, INC.") | str_detect(company, "OMICRON") | str_detect(company, "LIGHTHOUSE FOR THE BLIND, INCORPORATED, THE") | str_detect(company, "MSW, INC.") | str_detect(company, "AMERICA KNITS LLC") | str_detect(company, "RESPONSE TECHNOLOGIES, LLC") | str_detect(company, "BIO-MEDICAL DEVICES INTERNATIONAL, INC.") | str_detect(company, "AMERICAN GIANT, INC.") | str_detect(company, "HOPKINS UNIFORM COMPANY") 
+other_manf <- str_detect(company, "HANESBRANDS INC.") | str_detect(company, "PARKDALE ADVANCED MATERIALS, INC.") | str_detect(company, "STRING KING LACROSSE LLC") | str_detect(company, "H.C. CONTRACTING, INC.") | str_detect(company, "AURORA INDUSTRIES, LLC") | str_detect(company, "OUTDOOR RESEARCH, LLC")  | str_detect(company, "FAIRFIELD CHAIR COMPANY") | str_detect(company, "MOLNLYCKE HEALTH CARE US, LLC") | str_detect(company, "CARROLL WOODS, INC.") | str_detect(company, "ORSA TECHNOLOGIES, LLC") | str_detect(company, "WELCH ALLYN, INC.") | str_detect(company, "OMICRON") | str_detect(company, "LIGHTHOUSE FOR THE BLIND, INCORPORATED, THE") | str_detect(company, "MSW, INC.") | str_detect(company, "AMERICA KNITS LLC") | str_detect(company, "RESPONSE TECHNOLOGIES, LLC") | str_detect(company, "BIO-MEDICAL DEVICES INTERNATIONAL, INC.") | str_detect(company, "AMERICAN GIANT, INC.") | str_detect(company, "HOPKINS UNIFORM COMPANY") | str_detect(company, "Xometry")
 
-ind_mil_lab <- str_detect(company, "VWR INTERNATIONAL, LLC") | str_detect(company, "FISHER SCIENTIFIC COMPANY L.L.C.") | str_detect(company, "GERSON") | str_detect(company, "UNIFIRE, INC.") | str_detect(company, "ARBILL INDUSTRIES, INC.") | str_detect(company, "NORTH AMERICAN RESCUE, LLC") | str_detect(company, "DRAEGER")| str_detect(company, "L C INDUSTRIES INC.") | str_detect(company, "ILC DOVER LP") | str_detect(company, "IMMEDIATE RESPONSE TECHNOLOGIES, LLC") | str_detect(company, "W. S. DARLEY & CO.") | str_detect(company, "AVON PROTECTION SYSTEMS, INC.")
+ind_mil_lab <- str_detect(company, "VWR INTERNATIONAL, LLC") | str_detect(company, "FISHER SCIENTIFIC COMPANY L.L.C.") | str_detect(company, "GERSON") | str_detect(company, "UNIFIRE, INC.") | str_detect(company, "ARBILL INDUSTRIES, INC.") | str_detect(company, "NORTH AMERICAN RESCUE, LLC") | str_detect(company, "DRAEGER")| str_detect(company, "L C INDUSTRIES INC.") | str_detect(company, "ILC DOVER LP") | str_detect(company, "IMMEDIATE RESPONSE TECHNOLOGIES, LLC") | str_detect(company, "W. S. DARLEY & CO.") | str_detect(company, "AVON PROTECTION SYSTEMS, INC.") | str_detect(company, "MSA") | str_detect(company, "HOLLINGSWORTH & VOSE COMPANY") | str_detect(company, "GVS FILTRATION INC.") | str_detect(company, "ReadyOne")
 ```
 
 ```{r}
 covid_contracts_struc <- covid_contracts_clean %>% 
   mutate(company_category = case_when(
-    str_detect(company, "BENCO DENTAL") | str_detect(company, "HENRY SCHEIN") | str_detect(company, "MSC INDUSTRIAL DIRECT CO INC") | str_detect(company, "OFFICE DEPOT") | str_detect(company, "DENTAL HEALTH PRODUCTS INCORPORATED") | str_detect(company, "DOVE MEDICAL SUPPLY LLC") | str_detect(company, "PRACTICON, INC.") | str_detect(company, "THOMAS SCIENTIFIC, LLC") | str_detect(company, "DARBY DENTAL SUPPLY, LLC") | str_detect(company, "SARATOGA ADVISORS GROUP, LLC") | str_detect(company, "GRAINGER") | str_detect(company, "AMERICARE, LLC") | str_detect(company, "TRANSCENDENCE, INC.") | str_detect(company, "ASE DIRECT, INC.") | str_detect(company, "FASTENAL COMPANY") | str_detect(company, "FULTON SUPPLY COMPANY") | str_detect(company, "VAN TECH INDUSTRIES LLC") | str_detect(company, "FIRST NATION GROUP, LLC") | str_detect(company, "PACIFIC LINK INTERNATIONAL CORPORATION") | str_detect(company, "CONCORDANCE HEALTHCARE SOLUTIONS LLC") | str_detect(company, "CLARK COLLECTION, LTD., THE")  | str_detect(company, "TRI-PHARMA, INC.") ~ "Distributors", 
-    str_detect(company, "TACTICAL & SURVIVAL SPECIALTIES, INC.") |  str_detect(company, "ATLANTIC DIVING SUPPLY, INC.") | str_detect(company, "GOVERNMENT SCIENTIFIC SOURCE, INC.") | str_detect(company, "WECSYS LLC") | str_detect(company, "FEDERAL RESOURCES SUPPLY COMPANY") | str_detect(company, "SCIENCE APPLICATIONS INTERNATIONAL CORPORATION") | str_detect(company, "METRO MEDICAL EQUIPMENT & SUPPLY, INC.") | str_detect(company, "ARS SALES AND SERVICES LLC") | str_detect(company, "PROAIM AMERICAS, LLC") | str_detect(company, "FEDERAL PRISON") | str_detect(company, "FEDERAL GOVERNMENT EXPERTS, LLC") | str_detect(company, "WRIGHT CONSULTANTS & ASSOCIATES LLC") | str_detect(company, "PREMIUM RX NATIONAL LLC") | str_detect(company, "VENERGY GROUP, LLC") | str_detect(company, "ANA SOURCING LLC") | str_detect(company, "RIDGE THOMAS GROUP, LLC") | str_detect(company, "APEX OMNISOURCE, LLC") | str_detect(company, "SZY HOLDINGS, LLC") ~ "Government Logistics", 
-    str_detect(company, "3M") | str_detect(company, "HONEYWELL") | str_detect(company, "MOLDEX") | str_detect(company, "OWENS")| str_detect(company, "O&M") | str_detect(company, "CROSSTEX") | str_detect(company, "PRESTIGE AMERITECH") | str_detect(company, "MEDLINE") | str_detect(company, "LYDALL") | str_detect(company, "CARDINAL HEALTH 200, LLC") ~ "Major Medical Manufacturer", 
-    str_detect(company, "HANESBRANDS INC.") | str_detect(company, "GVS FILTRATION INC.") | str_detect(company, "PARKDALE ADVANCED MATERIALS, INC.") | str_detect(company, "STRING KING LACROSSE LLC") | str_detect(company, "VPL MEDICAL, INC.") | str_detect(company, "H.C. CONTRACTING, INC.") | str_detect(company, "AURORA INDUSTRIES, LLC") | str_detect(company, "OUTDOOR RESEARCH, LLC")  |str_detect(company, "FAIRFIELD CHAIR COMPANY") | str_detect(company, "MOLNLYCKE HEALTH CARE US, LLC") | str_detect(company, "AVMEDICAL, LLC") | str_detect(company, "CARROLL WOODS, INC.") | str_detect(company, "HOLLINGSWORTH & VOSE COMPANY") | str_detect(company, "PATTERSON COMPANIES, INC.") | str_detect(company, "ORSA TECHNOLOGIES, LLC") | str_detect(company, "WELCH ALLYN, INC.") | str_detect(company, "OMICRON") | str_detect(company, "LIGHTHOUSE FOR THE BLIND, INCORPORATED, THE") | str_detect(company, "MSW, INC.")  | str_detect(company, "AMERICA KNITS LLC") | str_detect(company, "BIO-MEDICAL DEVICES INTERNATIONAL, INC.") | str_detect(company, "AMERICAN GIANT, INC.") | str_detect(company, "HOPKINS UNIFORM COMPANY") ~ "Other Manufacturer", 
-    str_detect(company, "VWR INTERNATIONAL, LLC") | str_detect(company, "FISHER SCIENTIFIC COMPANY L.L.C.") | str_detect(company, "GERSON") | str_detect(company, "UNIFIRE, INC.") | str_detect(company, "ARBILL INDUSTRIES, INC.") | str_detect(company, "NORTH AMERICAN RESCUE, LLC") | str_detect(company, "DRAEGER")| str_detect(company, "L C INDUSTRIES INC.") | str_detect(company, "ILC DOVER LP") | str_detect(company, "RESPONSE TECHNOLOGIES, LLC") | str_detect(company, "IMMEDIATE RESPONSE TECHNOLOGIES, LLC") | str_detect(company, "W. S. DARLEY & CO.") | str_detect(company, "AVON PROTECTION SYSTEMS, INC.") ~ "Industrial, Military, or Lab Supplier", 
+    str_detect(company, "BENCO DENTAL") | str_detect(company, "HENRY SCHEIN") | str_detect(company, "MSC INDUSTRIAL DIRECT CO INC") | str_detect(company, "OFFICE DEPOT") | str_detect(company, "DENTAL HEALTH PRODUCTS INCORPORATED") | str_detect(company, "DOVE MEDICAL SUPPLY LLC") | str_detect(company, "PRACTICON, INC.") | str_detect(company, "THOMAS SCIENTIFIC, LLC") | str_detect(company, "DARBY DENTAL SUPPLY, LLC") | str_detect(company, "SARATOGA ADVISORS GROUP, LLC") | str_detect(company, "GRAINGER") | str_detect(company, "AMERICARE, LLC") | str_detect(company, "TRANSCENDENCE, INC.") | str_detect(company, "ASE DIRECT, INC.") | str_detect(company, "FASTENAL COMPANY") | str_detect(company, "FULTON SUPPLY COMPANY") | str_detect(company, "VAN TECH INDUSTRIES LLC") | str_detect(company, "FIRST NATION GROUP, LLC") | str_detect(company, "PACIFIC LINK INTERNATIONAL CORPORATION") | str_detect(company, "CONCORDANCE HEALTHCARE SOLUTIONS LLC") | str_detect(company, "CLARK COLLECTION, LTD., THE")  | str_detect(company, "PATTERSON COMPANIES, INC.") | str_detect(company, "TRI-PHARMA, INC.") | str_detect(company, "VPL MEDICAL, INC.")  | str_detect(company, "SAFEWARE") ~ "Distributors", 
+    str_detect(company, "TACTICAL & SURVIVAL SPECIALTIES, INC.") |  str_detect(company, "ATLANTIC DIVING SUPPLY, INC.") | str_detect(company, "GOVERNMENT SCIENTIFIC SOURCE, INC.") | str_detect(company, "WECSYS LLC") | str_detect(company, "FEDERAL RESOURCES SUPPLY COMPANY") | str_detect(company, "SCIENCE APPLICATIONS INTERNATIONAL CORPORATION") | str_detect(company, "METRO MEDICAL EQUIPMENT & SUPPLY, INC.") | str_detect(company, "ARS SALES AND SERVICES LLC") | str_detect(company, "PROAIM AMERICAS, LLC") | str_detect(company, "FEDERAL PRISON") | str_detect(company, "FEDERAL GOVERNMENT EXPERTS, LLC") | str_detect(company, "WRIGHT CONSULTANTS & ASSOCIATES LLC") | str_detect(company, "PREMIUM RX NATIONAL LLC") | str_detect(company, "VENERGY GROUP, LLC") | str_detect(company, "ANA SOURCING LLC") | str_detect(company, "RIDGE THOMAS GROUP, LLC") | str_detect(company, "APEX OMNISOURCE, LLC") | str_detect(company, "SZY HOLDINGS, LLC") | str_detect(company, "AVMEDICAL, LLC")  ~ "Government Logistics", 
+    str_detect(company, "3M") | str_detect(company, "HONEYWELL") | str_detect(company, "MOLDEX") | str_detect(company, "OWENS")| str_detect(company, "O&M") | str_detect(company, "CROSSTEX") | str_detect(company, "PRESTIGE AMERITECH") | str_detect(company, "MEDLINE") | str_detect(company, "LYDALL") | str_detect(company, "CARDINAL HEALTH 200, LLC") | str_detect(company, "Alpha Pro") ~ "Major Medical Manufacturer", 
+    str_detect(company, "HANESBRANDS INC.") | str_detect(company, "PARKDALE ADVANCED MATERIALS, INC.") | str_detect(company, "STRING KING LACROSSE LLC") | str_detect(company, "H.C. CONTRACTING, INC.") | str_detect(company, "AURORA INDUSTRIES, LLC") | str_detect(company, "OUTDOOR RESEARCH, LLC")  |str_detect(company, "FAIRFIELD CHAIR COMPANY") | str_detect(company, "MOLNLYCKE HEALTH CARE US, LLC") | str_detect(company, "CARROLL WOODS, INC.") | str_detect(company, "ORSA TECHNOLOGIES, LLC") | str_detect(company, "WELCH ALLYN, INC.") | str_detect(company, "OMICRON") | str_detect(company, "LIGHTHOUSE FOR THE BLIND, INCORPORATED, THE") | str_detect(company, "MSW, INC.")  | str_detect(company, "AMERICA KNITS LLC") | str_detect(company, "BIO-MEDICAL DEVICES INTERNATIONAL, INC.") | str_detect(company, "AMERICAN GIANT, INC.") | str_detect(company, "HOPKINS UNIFORM COMPANY") | str_detect(company, "Xometry") ~ "Other Manufacturer", 
+    str_detect(company, "VWR INTERNATIONAL, LLC") | str_detect(company, "FISHER SCIENTIFIC COMPANY L.L.C.") | str_detect(company, "GERSON") | str_detect(company, "UNIFIRE, INC.") | str_detect(company, "ARBILL INDUSTRIES, INC.") | str_detect(company, "NORTH AMERICAN RESCUE, LLC") | str_detect(company, "DRAEGER")| str_detect(company, "L C INDUSTRIES INC.") | str_detect(company, "ILC DOVER LP") | str_detect(company, "RESPONSE TECHNOLOGIES, LLC") | str_detect(company, "IMMEDIATE RESPONSE TECHNOLOGIES, LLC") | str_detect(company, "W. S. DARLEY & CO.") | str_detect(company, "AVON PROTECTION SYSTEMS, INC.") | str_detect(company, "MSA") | str_detect(company, "HOLLINGSWORTH & VOSE COMPANY") | str_detect(company, "GVS FILTRATION INC.")  | str_detect(company, "ReadyOne") ~ "Industrial, Military, or Lab Supplier", 
     TRUE ~ "Uncategorized"
     ))
 ```
+
+
+```{r}
+covid_contracts_struc %>% 
+  saveRDS(box_here("/contracts/covid_contracts.RDS"))
+```
+
 
 ```{r}
 covid_contracts_struc %>% 
@@ -295,19 +301,34 @@ covid_contracts_struc %>%
   group_by(company_category) %>% 
   count()
 ```
-```{r}
+```{r, eval = FALSE}
 col_pal <- c(brewer.pal(8, "Accent")[5], brewer.pal(8, "Set2")[4], brewer.pal(8, "Accent")[7], brewer.pal(8, "Set2")[8], brewer.pal(9, "Set3")[1])
 ```
 
+# Federal Contracts Analysis 
+
+```{r}
+covid_contracts_struc <- readRDS(box_here("/contracts/covid_contracts.RDS"))
+```
+
+
+```{r}
+col_pal <-c("Light Blue", brewer.pal(8, "Accent")[7], brewer.pal(9, "Greys")[3], brewer.pal(8, "Set3")[6], brewer.pal(9, "Set3")[1])
+```
+
+
 ```{r}
 covid_contracts_struc <- covid_contracts_struc %>% 
-  mutate(comp_order = case_when(
-    broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator") ~ total_dollars_obligated
+  mutate(cat_order = case_when(
+    company_category == "Major Medical Manufacturer" ~ 1, 
+    company_category == "Industrial, Military, or Lab Supplier" ~ 2,
+    company_category == "Distributors" ~ 3,
+    company_category == "Government Logistics" ~ 4, 
+    company_category == "Other Manufacturer" ~ 5 
   )) %>% 
-  group_by(company_category) %>% 
-  mutate(cat_order = sum(comp_order, na.rm = TRUE)) %>% 
   ungroup()
 ```
+
 
 
 ```{r}
@@ -378,12 +399,13 @@ both_hist <- covid_contracts_struc %>%
   mutate(total_dollars = sum(total_dollars_obligated), 
          total_contracts = n()) %>% 
   ggplot() + 
-  geom_histogram(color = "black", aes(x = solicitation_date, group = reorder(company_category, cat_order), fill = reorder(company_category, cat_order)), alpha = 0.7, position = "stack" ,binwidth =  15) + 
-  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  geom_histogram(color = "black", aes(x = solicitation_date, group = reorder(company_category, -cat_order), fill = reorder(company_category, -cat_order)), alpha = 0.7, position = "stack" ,binwidth =  15) +
+  guides(fill = FALSE) + 
+  scale_x_date(date_labels = "%b", breaks = "month") + 
   scale_fill_manual(values = col_pal) + 
   theme_minimal() + 
-  theme(axis.text.y = element_text(size = 12),  axis.text.x = element_text(size = 12, angle= 45, hjust = 1), legend.position = "bottom", legend.text = element_text(size = 12), plot.title = element_text(hjust = 0.5)) + 
-  labs(x = "" , fill = "", y = "Contracts", title = "Standard FDA/NIOSH Regulated Mask/Respirators and Other, Unspecified Mask/Respirators") 
+  theme(axis.text.y = element_text(size = 12),  axis.text.x = element_text(size = 12), legend.text = element_text(size = 12), plot.title = element_text(hjust = 0.5)) + 
+  labs(x = "" , fill = "", y = "Regulated Mask/Respirators and Other, Unspecified Mask/Respirator Contracts", title = "") 
 ```
 ```{r}
 ggsave(box_here("/Figures/both_hist.png"), plot = both_hist, units = "in", width = 12, height = 5)
@@ -432,7 +454,7 @@ scale_fill_manual(values = col_pal) + theme(legend.position = "bottom", legend.t
 treemap_text + geom_treemap_text(colour = "black", place = "centre", grow = TRUE)
 ```
 
-```{r}
+```{r, eval = FALSE}
 test <- covid_contracts_struc %>% 
   mutate(agency_lab = str_extract(agency, "(?<=\\().+?(?=\\))")) %>% 
   filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator"), !company_category %in% c("Uncategorized")) %>% 
@@ -456,15 +478,7 @@ test <- covid_contracts_struc %>%
             )  
           )      
 ```
-
-
-```{r}
-covid_contracts_struc %>% 
-  saveRDS(box_here("/contracts/covid_contracts.RDS"))
-```
-
-
-# DRAFTS
+# DRAFTS OLD WORKD 
 ```{r}
 covid_contracts_struc %>% 
   filter(broad_product %in% c("Standard FDA Regulated Mask/Respirator", "Other, Unspecified Mask/Respirator"), company_category %in% c("Industrial, Military, or Lab Supplier")) %>% 

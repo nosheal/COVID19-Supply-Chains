@@ -34,16 +34,21 @@ agg <- read_xlsx(box_here("thomasnet_aggregate.xlsx")) %>%
          mvg_avg = (week_4_3 + week_3_2 + week_2_1 + week_1_0) / 4,
          percent_change = 100*round(mvg_avg, 3))
 
+today <- paste(month(today("GMT")), day(today("GMT")), year(today("GMT")), sep = "/")
+
 agg %>% 
-  mutate(prod_lab = case_when(
-    date == ymd("2020-06-05") ~ specific_product
-  ), 
+  mutate(prod_lab1 = case_when(
+    date == ymd("2021-01-04") & specific_product %in% c("Face Masks", "Respirators") ~ specific_product), 
+    prod_lab2 = case_when(
+      date == ymd("2021-01-04") & !specific_product %in% c("Face Masks", "Respirators") ~ specific_product), 
   change_lab = case_when(
-    date == ymd("2020-10-26") ~ paste(percent_change, " %", sep = ""))) %>% 
-  ggplot(aes(date, total, group = specific_product, color = specific_product, fill = specific_product, label = prod_lab)) +
+    date == dmy(today) ~ paste(percent_change, " %", sep = ""))) %>% 
+  ggplot(aes(date, total, group = specific_product, color = specific_product, fill = specific_product)) +
   geom_line(alpha = 0.5, show.legend = FALSE) + 
-  geom_label_repel(color = "Black", show.legend = FALSE, alpha = 0.7, hjust = -0.2, vjust = 1) + 
-  geom_label_repel(aes(label = change_lab), color = "Black", show.legend = FALSE, alpha = 0.7, hjust = -0.2, vjust = 1) +
+  geom_label_repel(aes(label = prod_lab1), color = "Black", show.legend = FALSE, alpha = 0.7, hjust = -0.2, vjust = 2) + 
+  geom_label_repel(aes(label = prod_lab2), color = "Black", show.legend = FALSE, alpha = 0.7, hjust = -0.2, vjust = 1) + 
+  geom_label_repel(aes(label = change_lab), color = "Black", show.legend = FALSE, alpha = 0.7, hjust = -0.2, vjust = 2) +
   geom_point(shape = 21, alpha = 0.7, size = 3, color = "Black", show.legend = FALSE) + 
-  labs(title = "Thomasnet Supplier Search Results Over Time", subtitle = "For Surgical Grade Mask/Respirator Supply Chain Search Terms \n05/30/20 - 11/02/20", y = "Unique Thomasnet Suppliers", fill = "", x = "Date") + 
+  labs(title = "Thomasnet Supplier Search Results Over Time", subtitle = paste("For Surgical Grade Mask/Respirator Supply Chain Search Terms \n05/30/20 -", today, sep = " "), y = "Unique Thomasnet Suppliers", fill = "", x = "Date") + 
   theme_bw()
+

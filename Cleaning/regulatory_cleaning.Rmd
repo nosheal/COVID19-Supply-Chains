@@ -173,6 +173,82 @@ fda_formatch <- rel_struc %>%
 saveRDS(fda_formatch, box_here("fda_formatch.RDS"))
 ```
 
+```{r}
+fda_eua <- readRDS(box_here("fda_eua.RDS"))
+```
+
+```{r}
+fda_current <- rel_struc %>% 
+  filter(year(ddate) > 2018) %>% 
+  distinct(APPLICANT, COUNTRY_CODE) %>% 
+  mutate(id = seq(n()), 
+         reg_type = "510k")
+```
+
+```{r}
+fda_comps <- fda_eua %>% 
+  distinct(company) %>% 
+  select(APPLICANT = company) %>% 
+  mutate(id = seq(n()), 
+         reg_type = "EUA") %>% 
+  bind_rows(fda_current)
+           
+```
+
+```{r}
+write_csv(fda_comps, box_here("fda_comps.csv"))
+```
+
+```{r}
+fda_comps_dbh <- read_csv(box_here("fda_comps_dbh.csv"))
+```
+
+```{r}
+fda_comps_clean <- fda_comps %>% 
+  select(id, reg_type, APPLICANT) %>% 
+  left_join(fda_comps_dbh) %>% 
+  group_by(comp_tn) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  select(-c("reg_type", "id", "tal"))
+```
+
+```{r}
+eua_apprs <- fda_eua %>% 
+  select(APPLICANT = company, date_removed, date_a = date_added) %>% 
+  mutate(reg_type = "EUA") %>% 
+  left_join(fda_comps_clean, by = c("APPLICANT")) %>% 
+  mutate(date_added = case_when(
+    is.na(date_added) ~ date_a, 
+    TRUE ~ date_added
+  ))
+```
+
+```{r}
+fda510k_apprs <- rel_struc %>% 
+  filter(year(ddate) > 2018) %>% 
+  mutate(address = paste(STREET1, STREET2, CITY, STATE, COUNTRY_CODE)) %>% 
+  select(APPLICANT, address, CITY, STATE, ddate, DATERECEIVED, DECISION, product) %>% 
+  left_join(fda_comps_clean) %>% 
+  select(-c("date_added")) %>% 
+  mutate(reg_type = "510k")
+```
+
+```{r}
+all_fda_apprs <- bind_rows(fda510k_apprs, eua_apprs) %>% 
+  mutate(ddate = case_when(
+    is.na(ddate) ~ mdy(date_added), 
+    TRUE ~ ddate
+  ))
+```
+
+```{r}
+all_fda_apprs %>% 
+  saveRDS(box_here("fda_apprs.RDS"))
+```
+
+
+## GRAPHING ETC
 
 ```{r}
 tot_graph <- rel_struc %>% 

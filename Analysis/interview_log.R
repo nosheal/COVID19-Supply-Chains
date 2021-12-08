@@ -68,13 +68,23 @@ int_graph <- log %>%
     str_detect(category, "Scale Up") ~ "Scale Up", 
     str_detect(category, "Non-Pivot") ~ "Non-Pivot"
   )) %>%  
-  mutate(category4 = case_when(
-    category %in% c("Other", "Federal Government", "State Government") ~ `pivot category`, 
-    str_detect(`pivot category`, "Small") ~ "Small Firm", 
-    str_detect(`pivot category`, "Medium") ~ "Medium Firm", 
-    str_detect(`pivot category`, "Large") ~ "Large Firm", 
+  mutate(firm_size = case_when(
+    sales_dbh < 1000000 ~ "Under $1 Mil", 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ "$1M-$10M", 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ "$10M-$50M", 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ "$50M-$1B", 
+    sales_dbh >= 1000000000 ~ "$1B + "
+  ), 
+  size_pos = case_when(
+    sales_dbh < 1000000 ~ 5, 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ 4, 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ 3, 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ 2, 
+    sales_dbh >= 1000000000 ~ 1
   )) %>% 
-  group_by(category3, category4) %>% 
+  mutate(category4 = case_when(
+    category %in% c("Other", "Federal Government", "State Government") ~ `pivot category`)) %>% 
+  group_by(category3, category4, firm_size, size_pos) %>% 
   count() %>% 
   mutate(category_pos = case_when(
     category3 == "New Entrant" ~ 1, 
@@ -98,19 +108,32 @@ non_manf = int_graph %>%
   count() %>% 
   unlist()
 
+size_col <- c(brewer.pal(9, "Blues")[9], brewer.pal(9, "Blues")[7], brewer.pal(9, "Blues")[6], brewer.pal(9, "Blues")[4], brewer.pal(9, "Blues")[3])
+
+
 int1 <- int_graph %>% 
   filter(!category3 %in% c("Other", "Federal Government", "State Government")) %>% 
   ggplot() + 
-  geom_col(aes(x = reorder(category3, -category_pos), y = n, group = category4, fill = category4), position = "stack", color = "Black") + 
+  geom_col(aes(x = reorder(category3, -category_pos), y = n, group = reorder(firm_size, size_pos), fill = reorder(firm_size, size_pos)), position = "stack", color = "Black") + 
   guides(fill = FALSE) + 
   coord_flip() +
-  scale_fill_brewer(palette = "Blues") + 
-  labs(title = paste("Manufacturing Entities, N:", manf_ent, sep = " "), x = "", y = "Interviews") +
+  scale_fill_manual(values = size_col, na.value = 'White') + 
+  labs(title = paste("Manufacturing Entities, N:", manf_ent, sep = " "), x = "", y = "") +
   theme_bw() +
   theme(axis.text = element_text(size = 15), 
         title = element_text(size = 18))
 
-non_manf_pal <- c(brewer.pal(9, "Purples"), brewer.pal(6, "Oranges"))
+non_manf_pal <- c(brewer.pal(9, "Purples")[1], 
+                  brewer.pal(9, "Purples")[3], 
+                  brewer.pal(9, "Purples")[6], 
+                  brewer.pal(9, "Purples")[2], 
+                  brewer.pal(11, "BrBG")[1],
+                  brewer.pal(9, "PuOr")[3],
+                  brewer.pal(11, "BrBG")[2],
+                  brewer.pal(11, "BrBG")[3],
+                  brewer.pal(11, "BrBG")[4],
+                  brewer.pal(6, "Oranges"))
+
 int2 <- int_graph %>% 
   filter(category3 %in% c("Other", "Federal Government", "State Government")) %>%
   mutate(nonmanf_pos = case_when(
@@ -131,7 +154,7 @@ int2 <- int_graph %>%
     category4 == "Supplier Sourcing Data Platform" ~ 15
   )) %>%  
   ggplot() + 
-  geom_col(alpha = 0.7, aes(x = reorder(category3, -category_pos), y = n, group = category4, fill = reorder(category4, nonmanf_pos)), position = "stack", color = "Black") + 
+  geom_col(alpha = 0.7, aes(x = reorder(category3, -category_pos), y = n, group = nonmanf_pos, fill = as.factor(nonmanf_pos)), position = "stack", color = "Black") + 
   guides(fill = FALSE) + 
   coord_flip() +
   scale_fill_manual(values = non_manf_pal) + 

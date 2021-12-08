@@ -1,0 +1,594 @@
+---
+title: "Analysis of Manually Cleaned Data"
+author: "Nikhil Kalathil"
+date: "08/01/2020"
+output:
+  html_document:
+    df_print: paged
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document takes manually checked data on domestic manufacturing locations, builds a geocoded company-location-address base sheet to reference all files against, creates a few summary graphs, and formats the data to be used in leaflet mapping. 
+
+```{r, include == FALSE }
+library(tidyverse)
+library(tidytext)
+library(RColorBrewer)
+library(ggthemes)
+library(tm)
+library(here)
+library(ggrepel)
+library(lubridate)
+library(ggnewscale)
+library(readxl)
+library(htmltools)
+library(htmlwidgets)
+library(RJSONIO)
+```
+```{r}
+
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/"
+
+```
+
+```{r}
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+```
+
+## GRAPHS FOR Presentation! 
+
+```{r}
+matched_states <- readRDS(box_here("matched_states.RDS")) %>% 
+  mutate(firm_size = case_when(
+    sales_dbh < 1000000 ~ "Under $1 Mil", 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ "$1M-$10M", 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ "$10M-$50M", 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ "$50M-$1B", 
+    sales_dbh >= 1000000000 ~ "$1B + "
+  ), 
+  size_pos = case_when(
+    sales_dbh < 1000000 ~ 5, 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ 4, 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ 3, 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ 2, 
+    sales_dbh >= 1000000000 ~ 1
+  ))
+```
+
+
+### Sample Graphs
+
+```{r}
+matched_states %>% 
+    filter(dom_useful_num == 1 | niosh_counter == TRUE | fda_counter == TRUE | contract_counter == TRUE | interview == 1, interview == 1) %>% 
+  mutate(reg_counter = case_when(
+        niosh_counter == TRUE | fda_counter == TRUE ~ "Regulatory Database", 
+        TRUE ~ "No Regulatory Approval"
+    )) %>% 
+  select(company, reg_counter, dom_useful_num, thomasnet, amma, broad_product, firm_size, size_pos) %>%  view()
+```
+
+
+```{r}
+sample_count <- matched_states %>% 
+  filter(dom_useful_num == 1 | niosh_counter == TRUE | fda_counter == TRUE | contract_counter == TRUE | interview == 1) %>% 
+  filter(dom_useful_num != 0) %>% 
+  group_by(broad_product) %>% 
+  count(interview, thomasnet, amma, niosh_counter, fda_counter, contract_counter, firm_size, size_pos)
+```
+
+
+```{r}
+sample_cols <- c(brewer.pal(9, "BuGn")[2], brewer.pal(9, "Purples")[6])
+```
+```{r}
+interview_count_end <- sample_count %>% 
+  filter(broad_product == "End Product", interview == 1) %>% 
+  mutate(tn = case_when(
+    thomasnet == 1 ~ "Thomasnet", 
+    is.na(thomasnet) ~ "Not on Thomasnet"
+  ), 
+  reg_counter = case_when(
+    niosh_counter == TRUE | fda_counter == TRUE ~ "Regulatory Database", 
+    TRUE ~ "No Regulatory Approval"
+  )) %>% 
+  group_by(tn, amma, reg_counter, interview) %>% 
+  summarise(total = sum(n))
+```
+
+```{r}
+interview_count_int <- sample_count %>% 
+  filter(broad_product == "Intermediary Product") %>% 
+  mutate(tn = case_when(
+    thomasnet == 1 ~ "Thomasnet", 
+    is.na(thomasnet) ~ "Not on Thomasnet"
+  )) %>% 
+  group_by(tn, amma, interview) %>% 
+  summarise(total = sum(n))
+```
+
+```{r}
+interview_count_contracts <- sample_count %>%  
+  mutate(tn = case_when(
+    thomasnet == 1 ~ "Thomasnet", 
+    is.na(thomasnet) ~ "Not on Thomasnet"
+  ),
+  reg_counter = case_when(
+    niosh_counter == TRUE | fda_counter == TRUE ~ "Regulatory Database", 
+    TRUE ~ "No Regulatory Approval"
+  )) %>% 
+  group_by(tn, amma, reg_counter, contract_counter) %>% 
+  summarise(total = sum(n))
+```
+
+```{r}
+sample_base <- sample_count %>% 
+  filter(broad_product == "End Product") %>% 
+  mutate(tn = case_when(
+    thomasnet == 1 ~ "Thomasnet", 
+    is.na(thomasnet) ~ "Not on Thomasnet"
+  ), 
+  reg_counter = case_when(
+    niosh_counter == TRUE | fda_counter == TRUE ~ "Regulatory Database", 
+    TRUE ~ "No Regulatory Approval"
+  )) %>% 
+  group_by(tn, amma, reg_counter) %>% 
+  summarise(total = sum(n)) %>% 
+  ggplot() + 
+  geom_col(aes(x = tn, y = total, group = amma, fill = as.factor(reg_counter)), position = "dodge", color = "black") +
+  geom_label(aes(x = tn, y = total, group = amma, fill = as.factor(reg_counter), label = total), position = position_dodge(width = 0.9), color = "black", size = 5) + 
+  scale_fill_manual(values = sample_cols) + 
+  coord_flip() + 
+  guides(fill = FALSE) +
+  labs(x = "", y = "Number of Companies") + 
+  theme_bw() + 
+  theme(axis.text = element_text(size = 12), 
+        axis.text.y = element_blank())
+```
+
+
+```{r}
+size_col <- c(brewer.pal(9, "Blues")[9], brewer.pal(9, "Blues")[7], brewer.pal(9, "Blues")[6], brewer.pal(9, "Blues")[4], brewer.pal(9, "Blues")[3])
+```
+
+```{r}
+sample_size_a <- sample_count %>% 
+  mutate(tn = case_when(
+    thomasnet == 1 ~ "Thomasnet", 
+    is.na(thomasnet) ~ "Not on Thomasnet"
+  ), 
+  am = case_when(
+    amma == 1 ~ "Amma Member", 
+    TRUE ~ "Not Amma Member")) %>% 
+  filter(tn == "Thomasnet") %>% 
+  group_by(am, firm_size, size_pos) %>% 
+  summarise(total = sum(n)) %>% 
+  ggplot() + 
+  geom_col(aes(x = am, y = total, group = reorder(firm_size, size_pos), fill = reorder(firm_size, size_pos)), position = "stack", color = "black") +
+  guides(fill = FALSE) + 
+  scale_fill_manual(values = size_col) + 
+  scale_y_continuous(limits = c(0, 120)) + 
+  coord_flip() + 
+  labs(x = "", y = "") + 
+  theme_bw() + 
+  theme(axis.text = element_text(size = 12), 
+        axis.text.y = element_blank()) 
+```
+
+```{r}
+sample_size_b <- sample_count %>% 
+  mutate(tn = case_when(
+    thomasnet == 1 ~ "Thomasnet", 
+    is.na(thomasnet) ~ "Not on Thomasnet"
+  ), 
+  am = case_when(
+    amma == 1 ~ "Amma Member", 
+    TRUE ~ "Not Amma Member")) %>% 
+  filter(tn != "Thomasnet") %>% 
+  group_by(am, firm_size, size_pos) %>% 
+  summarise(total = sum(n)) %>% 
+  ggplot() + 
+  geom_col(aes(x = am, y = total, group = reorder(firm_size, size_pos), fill = reorder(firm_size, size_pos)), position = "stack", color = "Black") +
+  scale_fill_manual(values = size_col) +
+  scale_y_continuous(limits = c(0, 120)) + 
+  coord_flip() + 
+  labs(x = "", y = "Number of Companies") + 
+  theme_bw() + 
+  theme(axis.text = element_text(size = 12), 
+        axis.text.y = element_blank()) + 
+  guides(fill = FALSE)
+```
+```{r}
+sample_size <- sample_size_a / sample_size_b
+```
+
+
+##### Company Timelines 
+
+```{r}
+company_timelines <- matched_sample %>% 
+  group_by(company) %>% 
+  mutate(min_reg = min(c(niosh, fda_510, eua), na.rm = TRUE)) %>% 
+  filter(dom_useful_num == 1 | niosh_counter == TRUE | fda_counter == TRUE | contract_counter == TRUE | interview == 1) %>% 
+  ggplot() + 
+  geom_point(aes(x = min_date, y = reorder(company, sales_dbh)), size = 2) + 
+  geom_point(shape = 21, fill = "Light Blue", aes(x = min_aff, y = reorder(company, sales_dbh)), size = 2) +
+  geom_point(shape = 22, aes(x = niosh, y = reorder(company, sales_dbh)), fill = "blue", size = 2) + 
+  geom_point(shape = 22, alpha = 0.7, aes(x = fda_510, y = reorder(company, sales_dbh)), fill = "purple", size = 2) + 
+  geom_point(shape = 22, aes(x = eua, y = reorder(company, sales_dbh)), fill = "purple", alpha = 0.5, size = 2) + 
+  geom_point(aes(x = first_contract, y = reorder(company, sales_dbh)), shape = 21, fill = "orange", alpha = 0.7, size = 2) +
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  theme_bw() + 
+  theme(axis.text.y = element_blank(), 
+        axis.text.x = element_text(angle = 60, hjust = 1)) + 
+  labs(x= "", y = "") 
+```
+
+```{r}
+reg_line <- matched_sample %>%
+  filter(niosh_counter == TRUE | fda_counter == TRUE) %>% 
+  group_by(company) %>% 
+  mutate(min_reg = min(c(niosh, fda_510, eua), na.rm = TRUE))
+```
+
+```{r}
+com_time_reg <- company_timelines + 
+  geom_segment(data = reg_line, aes(x = min_date, y = reorder(company, sales_dbh), xend = min_reg, yend = reorder(company, sales_dbh)))
+```
+
+## Thomasnet Validation Graphs
+
+```{r}
+validated <- matched_states %>% 
+  filter(broad_product == "End Product") %>% 
+  mutate(firm_size = case_when(
+    sales_dbh < 1000000 ~ "Under $1 Mil", 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ "$1M-$10M", 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ "$10M-$50M", 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ "$50M-$1B", 
+    sales_dbh >= 1000000000 ~ "$1B + "
+  ), 
+  size_pos = case_when(
+    sales_dbh < 1000000 ~ 5, 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ 4, 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ 3, 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ 2, 
+    sales_dbh >= 1000000000 ~ 1
+  )) %>% 
+  mutate(dom_useful = case_when(
+    interview == 1 ~ 1, 
+    dom_useful_num == -2 & (niosh_counter == TRUE | fda_counter == TRUE | contract_counter == TRUE) ~ 1,
+    TRUE ~ dom_useful_num
+  )) %>% 
+  filter(!is.na(dom_useful), dom_useful > -2) 
+```
+
+```{r}
+val_count <- validated %>% 
+  mutate(dom_useful = as.factor(dom_useful), month = month(min_date, label = TRUE), year = year(min_date), 
+  month_year = paste(month, substr(year, 3, 4), sep = ", ")) %>%
+  group_by(month_year, month, year, dom_useful) %>% 
+  count() %>% 
+  mutate(ddate =  make_date(year = year, month = month, day = 01)) %>% 
+  mutate(dom_use = case_when(
+    dom_useful == 1 ~ "Affirmatively", 
+    dom_useful == 0 ~ "No", 
+    dom_useful == -1 ~ "Unknown"
+  )) %>% 
+  select(ddate, dom_use, n) %>% 
+  pivot_wider(id_cols = c("ddate"), names_from = "dom_use", values_from = n) %>% 
+  mutate(Affirmatively = replace_na(Affirmatively, 0), 
+         No = replace_na(No, 0), 
+         Unknown = replace_na(Unknown, 0)) %>% 
+  filter(!is.na(ddate)) %>% 
+  pivot_longer(cols = -c("ddate"), names_to = "dom_useful", values_to = "n") %>% 
+  group_by(dom_useful) %>% 
+  arrange(ddate) %>% 
+  mutate(cumu_firms = cumsum(n), 
+         dom_pos = case_when(
+           dom_useful == "Affirmatively" ~ 1, 
+           dom_useful == "Unknown" ~ 2, 
+           dom_useful == "No" ~ 3
+         )) %>% 
+  filter(ddate < mdy("10/01/21"))
+```
+
+
+```{r}
+val_colors <- c(brewer.pal(9, "Set3")[9], brewer.pal(9, "Greys")[7], brewer.pal(9, "Set3")[1])
+```
+
+```{r}
+val_base <- val_count %>% 
+  ggplot() + 
+  geom_col(aes(x = ddate, y = cumu_firms, group = reorder(dom_useful, -dom_pos), fill = reorder(dom_useful, -dom_pos)), show.legend = FALSE, width = 31) + 
+  scale_fill_manual(values = val_colors) + 
+  scale_x_date(date_labels = "%b", breaks = "month") + 
+  theme_minimal() + 
+  theme(axis.text.y = element_text(size =14), 
+        axis.text.x = element_text(size =14)) + 
+  labs(x = "", y = "")
+```
+
+Ontop of cumsum graph stack real-time entries 
+
+```{r, eval = FALSE}
+val_1 <- validated  %>% 
+  group_by(company) %>% 
+  mutate(min_reg = min(c(niosh, fda_510, eua), na.rm = TRUE)) %>% 
+  group_by(dom_useful) %>%
+  ggplot() + 
+  geom_histogram(color = "black", aes(x = min_date, y = cumsum(..count..), group = dom_useful, fill = as.factor(dom_useful)), alpha = 0.7, binwidth =  15, position = position_stack(vjust = 2), show.legend = FALSE) + 
+  scale_fill_manual(values = val_colors) + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  theme_minimal() + 
+  theme(axis.text.y = element_text(size =14), 
+        axis.text.x = element_text(size =14, angle = 60, hjust = 1)) + 
+  labs(x = "", y = "")
+```
+
+```{r}
+val_dom <- validated %>% 
+  filter(dom_useful == 1) %>% 
+  mutate(month = month(min_date, label = TRUE), year = year(min_date), 
+  month_year = paste(month, substr(year, 3, 4), sep = ", ")) %>%
+  group_by(month_year, month, year, firm_size, size_pos) %>% 
+  count() %>% 
+  mutate(ddate =  make_date(year = year, month = month, day = 01)) %>% 
+  select(ddate, firm_size, n) %>% 
+  pivot_wider(id_cols = c("ddate"), names_from = "firm_size", values_from = n) %>% 
+  mutate(across(where(is.numeric), ~replace_na(., 0))) %>% 
+  pivot_longer(cols = -c("ddate"), names_to = "firm_size", values_to = "n") %>% 
+  group_by(firm_size) %>% 
+  arrange(ddate) %>% 
+  mutate(cumu_firms = cumsum(n), 
+         size_pos = case_when(
+    firm_size == "Under $1 Mil" ~ 5,
+    firm_size == "$1M-$10M" ~ 4, 
+    firm_size == "$10M-$50M" ~ 3, 
+    firm_size == "$50M-$1B" ~ 2, 
+    firm_size == "$1B + " ~ 1 
+  ), 
+  firm_size = case_when(
+    firm_size == "NA" ~ NA_character_, 
+    TRUE ~ firm_size
+  )) %>% 
+  filter(ddate < mdy("10/01/2021"))
+```
+
+```{r}
+val_fix <- val_dom %>% 
+  filter(ddate == mdy("08/01/2021")) %>% 
+  mutate(ddate = mdy("09/01/2021")) %>% 
+  bind_rows(val_dom)
+```
+
+
+
+```{r}
+size_col <- c(brewer.pal(9, "Blues")[9], brewer.pal(9, "Blues")[7], brewer.pal(9, "Blues")[6], brewer.pal(9, "Blues")[4], brewer.pal(9, "Blues")[3])
+```
+
+```{r}
+val_size <- val_base + 
+  new_scale_fill() + 
+  geom_col(data = val_fix, aes(x = ddate, y = cumu_firms, group = reorder(firm_size, size_pos), fill = reorder(firm_size, size_pos)), width = 31, color = "Black") +
+  scale_fill_manual(values = size_col, na.value = "White") + 
+  labs(fill = "") + 
+  guides(fill = FALSE, color = FALSE)
+```
+
+```{r}
+leg <- ggplot() + 
+  geom_col(data = val_fix, aes(x = ddate, y = cumu_firms, group = reorder(firm_size, size_pos), fill = reorder(firm_size, size_pos)), color = "Black") + 
+  scale_fill_manual(values = size_col, na.value = "White") + 
+  labs(fill = "") + 
+  theme_minimal() +  
+  guides(fill = guide_legend(nrow = 1)) +
+  theme(legend.position = "bottom")
+```
+
+
+```{r}
+val_2 <- val_1 + 
+  new_scale_fill() + 
+  geom_histogram(data = val_dom, color = "black", aes(x = min_date, y = cumsum(..count..), group = reorder(firm_size, size_pos), fill = reorder(firm_size, size_pos)), binwidth =  15, position = position_stack(vjust = 2)) +
+  scale_fill_manual(values = size_col, na.value = "White") + 
+  labs(fill = "")
+```
+
+```{r}
+val_leg <- val_2 + labs(fill = "Domestic Manufacturer Firm Size")
+```
+
+```{r}
+geom_histogram(color = "black", aes(x = min_reg), fill = brewer.pal(9, "BuPu")[2], binwidth =  15, position = position_stack(vjust = 2)) +
+```
+
+```{r}
+validates %>% 
+  mutate(firm_size = case_when(
+    sales_dbh < 1000000 ~ "Under $1 Mil", 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ "$1M-$10M", 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ "$10M-$50M", 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ "$50M-$1B", 
+    sales_dbh >= 1000000000 ~ "$1B + "
+  ), 
+  size_pos = case_when(
+    sales_dbh < 1000000 ~ 5, 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ 4, 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ 3, 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ 2, 
+    sales_dbh >= 1000000000 ~ 1
+  ), 
+  month = month(ddate, label = TRUE), year = year(ddate), 
+  month_year = paste(month, substr(year, 3, 4), sep = ", ")) %>%
+  group_by(firm_size, month_year, month, year, reg_type, reg_pos, size_pos) %>% 
+  count() %>% 
+  mutate(ddate =  make_date(year = year, month = month, day = 01))
+```
+
+```{r}
+validated %>% 
+  group_by(dom_useful) %>%
+  ggplot() + 
+  stat_binline(color = "black", aes(x = min_date, y =  as.factor(dom_useful), group = dom_useful, fill = as.factor(dom_useful)), stat = cumsum(..count..), scale = 2.2, alpha = 0.7, stat = "binline", binwidth =  15) + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month")  
+```
+## State Graphs
+
+```{r}
+short_col <- c(brewer.pal(9, "Set1")[3], brewer.pal(8, "Accent")[3], brewer.pal(9, "Set1")[1])
+```
+
+```{r}
+state_graph <- matched_states %>% 
+  filter(dom_useful_num == 1 | niosh_counter == TRUE | fda_counter == TRUE | contract_counter == TRUE | interview == 1, sales_dbh < 1000000000) %>% 
+  mutate(shortage = case_when(
+    min_date_all < mdy("06/01/2020") ~ "Intense", 
+    min_date_all >= mdy("06/01/2020") & min_date_all < mdy("09/01/2020") ~ "Resuming", 
+    min_date_all > mdy("09/01/2020") ~ "Normalized"
+  ), 
+  short_pos = case_when(
+    shortage == "Intense" ~ 1, 
+    shortage == "Resuming" ~ 2, 
+    shortage == "Normalized" ~ 3, 
+  )) %>% 
+  group_by(state_abbr, shortage, short_pos) %>% 
+  count() %>% 
+  group_by(state_abbr) %>% 
+  mutate(total = sum(n)) %>% 
+  ggplot() + 
+  geom_col(aes(x = n, y = reorder(state_abbr, total), group = reorder(shortage, -short_pos), fill = reorder(shortage, short_pos))) + 
+  scale_fill_manual(values = short_col) +
+  theme_bw() + 
+  labs(x = "Companies", y = "", fill = "Period of Shortages") + 
+  theme(legend.position = "top") 
+```
+
+```{r}
+state_reg_col <- c(brewer.pal(9, "Purples")[3], brewer.pal(12, "Set3")[10], brewer.pal(9, "Purples")[6])
+```
+
+
+```{r}
+state_reg_graph <- matched_states %>% 
+  filter(dom_useful_num == 1 | niosh_counter == TRUE | fda_counter == TRUE | contract_counter == TRUE | interview == 1, sales_dbh < 1000000000, broad_product == "End Product") %>% 
+  mutate(reg_appr = case_when(
+    niosh_counter == 1 & fda_counter == 1 ~ "NIOSH ahd FDA Approval",
+    niosh_counter == 1 & fda_counter == FALSE ~ "NIOSH Approval Only", 
+    niosh_counter == FALSE & fda_counter == TRUE ~ "FDA Approval Only")) %>% 
+  group_by(state_abbr, reg_appr) %>% 
+  count() %>% 
+  group_by(state_abbr) %>% 
+  mutate(reg_counter = case_when(
+    !is.na(reg_appr) ~ 1, 
+    is.na(reg_appr) ~ 0
+  ),
+    total_appr = sum(n*reg_counter), 
+  total = sum(n), 
+  appr_perc = paste(round(total_appr/total * 100), "%", sep = "")) %>% 
+  ggplot() + 
+  geom_col(aes(x = n, y = reorder(state_abbr, total), group = reg_appr, fill = reg_appr), show.legend = FALSE) + 
+  scale_fill_manual(values = state_reg_col, na.value = brewer.pal(9, "Set3")[1]) + 
+  theme_bw() + 
+  labs(x = "Companies", y = "", fill = "Regulatory Appproval") + 
+  theme(legend.position = "top", 
+        axis.text = element_text(size = 14)) 
+```
+
+```{r}
+state_reg_graph_label <- state_reg_graph +   geom_label(aes(x = total, y = reorder(state_abbr, total), label = appr_perc), size = 7, fill = brewer.pal(9, "Purples")[5]) + 
+```
+
+```{r}
+timing_test <- matched_states %>% 
+   filter(dom_useful_num == 1 | niosh_counter == TRUE | fda_counter == TRUE | contract_counter == TRUE | interview == 1, sales_dbh < 1000000000, broad_product == "End Product") %>% 
+  mutate(reg_appr = case_when(
+    niosh_counter == 1 & fda_counter == 1 ~ "NIOSH ahd FDA Approval",
+    niosh_counter == 1 & fda_counter == FALSE ~ "NIOSH Approval Only", 
+    niosh_counter == FALSE & fda_counter == TRUE ~ "FDA Approval Only")) %>% 
+  mutate(shortage = case_when(
+    min_date_all < mdy("06/01/2020") ~ "Intense", 
+    min_date_all >= mdy("06/01/2020") & min_date_all < mdy("09/01/2020") ~ "Resuming", 
+    min_date_all > mdy("09/01/2020") ~ "Normalized"
+  ), 
+  short_pos = case_when(
+    shortage == "Intense" ~ 1, 
+    shortage == "Resuming" ~ 2, 
+    shortage == "Normalized" ~ 3, 
+  )) %>% 
+  group_by(state_abbr, shortage, short_pos, reg_appr) %>% 
+  count() %>% 
+  group_by(state_abbr) %>% 
+  mutate(reg_counter = case_when(
+    !is.na(reg_appr) ~ 1, 
+    is.na(reg_appr) ~ 0
+  ),
+    total_appr = sum(n*reg_counter), 
+  total = sum(n), 
+  appr_perc = paste(round(total_appr/total * 100), "%", sep = ""))
+```
+
+
+```{r}
+reg_timing <- state_reg_graph + 
+  new_scale_fill()+
+  geom_col(data = timing_test, aes(x = n, y = reorder(state_abbr, total), group = reorder(shortage, -short_pos), fill = reorder(shortage, short_pos)), show.legend = FALSE) + 
+  geom_label(data = timing_test, aes(x = total, y = reorder(state_abbr, total), label = appr_perc), size = 7, fill = brewer.pal(9, "Purples")[5]) +
+  scale_fill_manual(values = short_col) 
+  
+```
+
+```{r}
+size_test <- matched_states %>% 
+  filter(dom_useful_num == 1 | niosh_counter == TRUE | fda_counter == TRUE | contract_counter == TRUE | interview == 1, sales_dbh < 1000000000, broad_product == "End Product") %>% 
+  mutate(firm_size = case_when(
+    sales_dbh < 1000000 ~ "Under $1 Mil", 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ "$1M-$10M", 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ "$10M-$50M", 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ "$50M-$1B", 
+    sales_dbh >= 1000000000 ~ "$1B + "
+  ), 
+  size_pos = case_when(
+    sales_dbh < 1000000 ~ 5, 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ 4, 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ 3, 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ 2, 
+    sales_dbh >= 1000000000 ~ 1)) %>% 
+   mutate(reg_appr = case_when(
+    niosh_counter == 1 & fda_counter == 1 ~ "NIOSH ahd FDA Approval",
+    niosh_counter == 1 & fda_counter == FALSE ~ "NIOSH Approval Only", 
+    niosh_counter == FALSE & fda_counter == TRUE ~ "FDA Approval Only")) %>% 
+  group_by(state_abbr, firm_size, size_pos, reg_appr) %>% 
+  count() %>% 
+  group_by(state_abbr) %>% 
+  mutate(reg_counter = case_when(
+    !is.na(reg_appr) ~ 1, 
+    is.na(reg_appr) ~ 0
+  ),
+    total_appr = sum(n*reg_counter), 
+  total = sum(n), 
+  appr_perc = paste(round(total_appr/total * 100), "%", sep = ""))
+```
+
+```{r}
+size_col1 <- c(brewer.pal(9, "Blues")[7], brewer.pal(9, "Blues")[6], brewer.pal(9, "Blues")[4], brewer.pal(9, "Blues")[3])
+```
+
+
+```{r}
+state_size <- state_reg_graph + 
+  new_scale_fill()+
+  geom_col(data = size_test, aes(x = n, y = reorder(state_abbr, total), group = reorder(firm_size, size_pos), fill = reorder(firm_size, size_pos)), show.legend = FALSE) + 
+  geom_label(data = size_test, aes(x = total, y = reorder(state_abbr, total), label = appr_perc), size = 7, fill = brewer.pal(9, "Purples")[5]) + 
+  scale_fill_manual(values = size_col1) 
+```

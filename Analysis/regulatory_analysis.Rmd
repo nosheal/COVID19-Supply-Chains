@@ -1,0 +1,1074 @@
+---
+title: "regulatory_analysis"
+author: "Nikhil Kalathil"
+date: "6/23/2021"
+output: html_document
+---
+
+```{r, include = FALSE}
+library(tidyverse)
+library(rvest)
+library(rebus)
+library(lubridate)
+library(here)
+library(ggthemes)
+library(tm)
+library(RColorBrewer)
+library(ggnewscale)
+library(ggridges)
+library(ggrepel)
+library(patchwork)
+```
+
+
+
+```{r}
+
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/FDA/"
+
+```
+
+```{r}
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document provides a procedure to analyze NIOSH certifications for respirator products over time, and both FDA 510k and EUA approvals. 
+
+```{r}
+fda_apprs <- readRDS(box_here("fda_apprs.RDS")) %>% 
+  mutate(product = case_when(
+    reg_type == "EUA" ~ "Surgical Face Mask", 
+    TRUE ~ product
+  ), 
+  reg_type = paste("FDA", reg_type, sep = " ")) %>% 
+  filter(product == "Surgical Face Mask")
+niosh_apprs <- readRDS(box_here("niosh_2020.RDS")) 
+```
+
+```{r}
+max_date <- niosh_apprs %>% 
+  ungroup() %>% 
+  summarise(max_date = max(appr_date)) 
+
+max_date <- max_date[[1]]
+```
+
+
+```{r}
+all_reg <- niosh_apprs %>% 
+  rename(APPLICANT = company, 
+         ddate = appr_date, 
+         COUNTRY_CODE = hq_country, 
+         product = specific_product) %>% 
+    ungroup() %>% 
+  select(-c("contact_info", "model_no", "approval_num", "valve", "donning_proc", "dist_auth", "private_label", "prnt_phone", "tal", "id", "info", "var", "obsolete", "private_company_prnt", "appr_num", "apprv_url", "master")) %>% 
+  mutate(reg_type = "NIOSH") %>% 
+  bind_rows(fda_apprs) %>% 
+  mutate(reg_type = case_when(
+    reg_type == "NIOSH"  ~ "NIOSH (Respirators)", 
+    reg_type == "FDA 510k" ~ "FDA 510k (Surgical Masks)", 
+    reg_type == "FDA EUA" ~" FDA EUA (Surgical Masks)"
+  ), 
+  reg_pos = case_when(
+    reg_type == "NIOSH (Respirators)" ~ 1, 
+    reg_type == "FDA 510k (Surgical Masks)" ~ 2, 
+    reg_type == "FDA EUA (Surgical Masks)" ~ 3
+  ), 
+  APPLICANT = case_when(
+    str_detect(DUNS, "07-847-6994") ~ "Indiana Face Mask",
+    TRUE ~ APPLICANT
+  ))
+```
+
+```{r}
+saveRDS(all_reg, box_here("all_reg.RDS"))
+```
+
+```{r}
+all_reg <- readRDS(box_here("all_reg.RDS"))
+```
+
+```{r}
+country_col <- c(brewer.pal(9, "Set3")[9], brewer.pal(9, "Purples")[6])
+```
+
+```{r}
+all_reg %>% 
+  filter(ddate < ymd(max_date)) %>% 
+  mutate(domestic = case_when(
+    COUNTRY_CODE == "US" | private_us_subsidiary == 1 ~ "US HQ or Private Subsidiary", 
+    TRUE ~ "Foreign HQ, No US Subsidiary"
+  )) %>% 
+  group_by(reg_type, domestic) %>% 
+  count()
+```
+```{r}
+country_count <- all_reg %>% 
+  filter(ddate < ymd(max_date)) %>% 
+  mutate(domestic = case_when(
+    COUNTRY_CODE == "US" | private_us_subsidiary == 1 ~ "US HQ or Private Subsidiary", 
+    TRUE ~ "Foreign HQ, No US Subsidiary"
+  ), 
+  month = month(ddate, label = TRUE), year = year(ddate), 
+  month_year = paste(month, substr(year, 3, 4), sep = ", ")) %>%
+  group_by(domestic, month_year, month, year, reg_type, reg_pos) %>% 
+  count() %>% 
+  mutate(ddate =  make_date(year = year, month = month, day = 01), 
+         month_year = case_when(
+           str_detect(month_year, "Jan") ~ month_year, 
+           TRUE ~ substr(month_year, 1, 3)))
+```
+
+```{r}
+country_niosh <- country_count %>% 
+  filter(year(ddate) > 2019, str_detect(reg_type, "NIOSH")) %>% 
+  ggplot() + 
+  geom_col(aes(x = ddate, y = n, group = domestic, fill = domestic), position = position_dodge(width = 30, preserve = "total"), show.legend = FALSE) + 
+  scale_fill_manual(values = country_col) + 
+  theme_minimal() + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2019-12-30","2021-05-15"))) +
+  theme(#axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "NIOSH (Respirators) \nMonthly Approvals", title = "", fill = "") + 
+      theme(plot.title = element_text(size = 14, hjust = 0.5),
+        axis.text = element_text(size = 12), 
+        axis.text.x = element_blank())
+```
+
+```{r}
+country_510k <- country_count %>% 
+  filter(year(ddate) > 2019, str_detect(reg_type, "FDA 510k")) %>% 
+  ggplot() + 
+  geom_col(aes(x = ddate, y = n, group = domestic, fill = domestic), position = position_dodge(width = 30, preserve = "total"), show.legend = FALSE) + 
+  scale_fill_manual(values = country_col) + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2019-12-30","2021-05-15"))) +
+  theme_minimal() + 
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "FDA510K (Surgical Masks) \nMonthly Approvals", title = "", fill = "") + 
+      theme(plot.title = element_text(size = 14, hjust = 0.5),
+        axis.text = element_text(size = 12) ,
+        axis.text.x = element_blank())
+```
+
+```{r}
+country_eua <- country_count %>% 
+  filter(year(ddate) > 2019, str_detect(reg_type, "FDA EUA")) %>% 
+  ggplot() + 
+  geom_col(aes(x = ddate, y = n, group = domestic, fill = domestic), position = position_dodge(width = 30, preserve = "total"), show.legend = FALSE) + 
+  scale_fill_manual(values = country_col) + 
+  scale_x_date(date_labels = "%b", breaks = "month", limits = as.Date(c("2019-12-30","2021-05-15"))) +
+  theme_minimal() + 
+  theme(#axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "FDA EUA (Surgical Masks) \nMonthly Approvals", title = "", fill = "") + 
+      theme(plot.title = element_text(size = 14, hjust = 0.5),
+        axis.text = element_text(size = 12))
+```
+
+```{r}
+country_reg <-  country_niosh / country_510k / country_eua 
+```
+
+```{r}
+country_niosh_all <- country_count %>% 
+  filter(str_detect(reg_type, "NIOSH")) %>% 
+  ggplot() + 
+  geom_col(aes(x = ddate, y = n, group = domestic, fill = domestic), position = "dodge") + 
+  scale_fill_manual(values = country_col) + 
+  theme_minimal() + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2019-01-01","2021-05-15"))) +
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "", title = "NIOSH (Respirators)", fill = "") + 
+      theme(plot.title = element_text(size = 14, hjust = 0.5),
+        axis.text = element_text(size = 12))
+```
+
+```{r}
+country_510k_all <- country_count %>% 
+  filter(str_detect(reg_type, "FDA 510k")) %>% 
+  ggplot() + 
+  geom_col(aes(x = ddate, y = n, group = domestic, fill = domestic), position = "dodge", show.legend = FALSE) + 
+  scale_fill_manual(values = country_col) + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2019-01-01","2021-05-15"))) +
+  guides(fill = FALSE) + 
+  theme_minimal() + 
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "Monthly Approvals", title = "FDA 510k Approvals (Surgical Masks)", fill = "") + 
+      theme(plot.title = element_text(size = 14, hjust = 0.5),
+        axis.text = element_text(size = 12) ,
+        axis.text.x = element_blank())
+```
+
+```{r}
+country_reg_all <- country_510k_all / country_niosh_all
+```
+
+
+```{r, eval = FALSE}
+#OLD
+country_graph <- all_reg %>% 
+  filter(ddate < ymd(max_date), year(ddate) > 2019) %>% 
+  mutate(domestic = case_when(
+    COUNTRY_CODE == "US" | private_us_subsidiary == 1 ~ "US HQ or Private Subsidiary", 
+    TRUE ~ "Foreign HQ, No US Subsidiary"
+  ), 
+  month = month(ddate, label = TRUE), year = year(ddate), 
+  month_year = paste(month, substr(year, 3, 4), sep = ", ")) %>%
+  group_by(domestic, month_year, month, year, reg_type, reg_pos) %>% 
+  count() %>% 
+  mutate(ddate =  make_date(year = year, month = month, day = 01)) %>% 
+  ggplot() + 
+  geom_col(aes(x = reorder(month_year, desc(ddate)), y = n, group = domestic, fill = domestic), position = "dodge") + 
+    facet_wrap(~reorder(reg_type, reg_pos)) + 
+  coord_flip() + 
+  scale_fill_manual(values = country_col) + 
+  theme_minimal() + 
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "Monthly Approvals", title = "", fill = "") + 
+      theme(plot.title = element_text(size = 18),
+        axis.text = element_text(size = 12))
+
+country_graph
+```
+
+```{r, eval = FALSE}
+#OLD
+country_graph_all <- all_reg %>% 
+  filter(ddate < ymd(max_date)) %>% 
+  mutate(domestic = case_when(
+    COUNTRY_CODE == "US" | private_us_subsidiary == 1 ~ "US HQ or Private Subsidiary", 
+    TRUE ~ "Foreign HQ, No US Subsidiary"
+  ), 
+  month = month(ddate, label = TRUE), year = year(ddate), 
+  month_year = paste(month, substr(year, 3, 4), sep = ", ")) %>%
+  group_by(domestic, month_year, month, year, reg_type, reg_pos) %>% 
+  count() %>% 
+  mutate(ddate =  make_date(year = year, month = month, day = 01)) %>% 
+  ggplot() + 
+  geom_col(aes(x = reorder(month_year, desc(ddate)), y = n, group = domestic, fill = domestic), position = "dodge") + 
+    facet_wrap(~reorder(reg_type, reg_pos)) + 
+  coord_flip() + 
+  scale_fill_manual(values = country_col) + 
+  theme_minimal() + 
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "Monthly Approvals", title = "", fill = "") + 
+      theme(plot.title = element_text(size = 18),
+        axis.text = element_text(size = 12))
+
+country_graph_all
+```
+
+```{r}
+cutoff <- max_date
+```
+
+```{r}
+size_col1 <- c(brewer.pal(9, "Greys")[7], brewer.pal(9, "Greys")[5], brewer.pal(9, "Blues")[6], brewer.pal(8, "Set2")[7], brewer.pal(8, "Set3")[1])
+```
+
+```{r}
+size_col <- c(brewer.pal(9, "Blues")[9], brewer.pal(9, "Blues")[7], brewer.pal(9, "Blues")[6], brewer.pal(9, "Blues")[4], brewer.pal(9, "Blues")[3])
+```
+
+```{r}
+size_count <-  all_reg %>% 
+  filter(COUNTRY_CODE == "US" | private_us_subsidiary == 1, ddate < ymd(max_date)) %>% 
+  mutate(sales_dbh = case_when(
+    is.na(sales_dbh) ~ 900000, 
+    TRUE ~ sales_dbh
+  ), 
+  firm_size = case_when(
+    sales_dbh < 1000000 ~ "Under $1 Mil", 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ "$1M-$10M", 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ "$10M-$50M", 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ "$50M-$1B", 
+    sales_dbh >= 1000000000 ~ "$1B + "
+  ), 
+  size_pos = case_when(
+    sales_dbh < 1000000 ~ 5, 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ 4, 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ 3, 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ 2, 
+    sales_dbh >= 1000000000 ~ 1
+  ), 
+  month = month(ddate, label = TRUE), year = year(ddate), 
+  month_year = paste(month, substr(year, 3, 4), sep = ", ")) %>%
+  group_by(firm_size, month_year, month, year, reg_type, reg_pos, size_pos) %>% 
+  count() %>% 
+  mutate(ddate =  make_date(year = year, month = month, day = 01))
+```
+
+```{r}
+niosh_graph <- size_count %>% 
+  filter(year(ddate) > 2019, str_detect(reg_type, "NIOSH"), month_year != "Mar, 20")
+
+niosh_graph1 <- size_count %>% 
+  filter(str_detect(reg_type, "NIOSH"), month_year == "Mar, 20")
+```
+
+```{r}
+size_niosh <- country_niosh + 
+  new_scale_fill() + 
+   geom_col(data = niosh_graph, aes(x = ddate + 7, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 15, show.legend = FALSE) + 
+  geom_col(data = niosh_graph1, aes(x = ddate, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 30, show.legend = FALSE) + 
+  scale_fill_manual(values = size_col, na.value = "White") + 
+  labs(fill = "") + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2019-12-30","2021-06-01")))
+```
+
+
+```{r, eval = FALSE}
+size_niosh <- size_count %>% 
+  filter(year(ddate) > 2019, str_detect(reg_type, "NIOSH")) %>% 
+  ggplot() + 
+  #geom_rect(aes(xmin = mdy("01/01/2020"), xmax = mdy("06/01/2020"), ymin = 0, ymax = 10), fill = "Blue") + 
+  geom_col(aes(x = ddate, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", alpha = 0.9, color = "Dark Grey") + 
+  scale_fill_manual(values = size_col) + 
+  theme_minimal() + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2019-12-30","2021-05-15"))) +
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "", title = "NIOSH (Respirators)", fill = "Company Annual Sales") + 
+      theme(plot.title = element_text(size = 14, hjust = 0.5),
+        axis.text = element_text(size = 12))
+```
+
+```{r}
+graph_510k <- size_count %>% 
+  filter(year(ddate) > 2019, str_detect(reg_type, "FDA 510k"), !month_year %in% c("Apr, 20", "Jul, 20"))
+
+graph_510k1 <- size_count %>% 
+  filter(year(ddate) > 2019, str_detect(reg_type, "FDA 510k"), month_year %in% c("Apr, 20", "Jul, 20"))
+```
+
+```{r}
+size_510k <- country_510k + 
+  new_scale_fill() + 
+   geom_col(data = graph_510k, aes(x = ddate + 7, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 15, show.legend = FALSE) + 
+  geom_col(data = graph_510k1, aes(x = ddate, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 30, show.legend = FALSE) + 
+  scale_fill_manual(values = size_col, na.value = "White") + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2019-12-30","2021-06-01")))
+```
+
+```{r, eval = FALSE}
+size_510k <- size_count %>% 
+  filter(year(ddate) > 2019, str_detect(reg_type, "FDA 510k")) %>% 
+  ggplot() + 
+  geom_col(aes(x = ddate, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", alpha = 0.9, color = "Dark Grey" ) + 
+  scale_fill_manual(values = size_col) + 
+  theme_minimal() + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2019-12-30","2021-05-15"))) +
+  guides(fill = FALSE) + 
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "Monthly Approvals", title = "FDA 510k (Surgical Masks)", fill = "Company Annual Sales") + 
+      theme(plot.title = element_text(size = 14, hjust = 0.5),
+        axis.text = element_text(size = 12), 
+        axis.text.x = element_blank())
+```
+
+```{r}
+eua_graph <- size_count %>% 
+  filter(year(ddate) > 2019, str_detect(reg_type, "FDA EUA"), !month_year %in% c("Aug, 20", "Sep, 20", "Feb, 21"))
+
+eua_graph1 <- size_count %>% 
+  filter(year(ddate) > 2019, str_detect(reg_type, "FDA EUA"), month_year %in% c("Aug, 20", "Sep, 20", "Feb, 21"))
+```
+
+```{r}
+size_eua <- country_eua + 
+  new_scale_fill() + 
+   geom_col(data = eua_graph, aes(x = ddate + 7, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 15, show.legend = FALSE) + 
+  geom_col(data = eua_graph1, aes(x = ddate, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 30, show.legend = FALSE) + 
+  scale_fill_manual(values = size_col, na.value = "White") + 
+  scale_x_date(date_labels = "%b", breaks = "month", limits = as.Date(c("2019-12-30","2021-06-01")))
+```
+
+```{r, eval = FALSE}
+size_eua <- size_count %>% 
+  filter(year(ddate) > 2019, str_detect(reg_type, "FDA EUA")) %>% 
+  ggplot() + 
+  geom_col(aes(x = ddate, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", alpha = 0.9, color = "Dark Grey") + 
+  scale_fill_manual(values = size_col) + 
+  theme_minimal() + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2019-12-30","2021-05-15"))) +
+  guides(fill = FALSE) + 
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "", title = "FDA EUA (Surgical Masks)", fill = "Company Annual Sales") + 
+      theme(plot.title = element_text(size = 14, hjust = 0.5),
+        axis.text = element_text(size = 12), 
+        axis.text.x = element_blank())
+```
+
+```{r}
+size_reg <- size_niosh / size_510k / size_eua 
+```
+
+```{r}
+size_niosh_all <- size_count %>% 
+  filter(str_detect(reg_type, "NIOSH")) %>% 
+  ggplot() + 
+  geom_col(aes(x = ddate, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "dodge", alpha = 0.9, color = "Dark Grey") + 
+  scale_fill_manual(values = size_col) + 
+  theme_minimal() + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2018-12-30","2021-05-15"))) +
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "", title = "NIOSH (Respirators)", fill = "Company Annual Sales") + 
+      theme(plot.title = element_text(size = 14, hjust = 0.5),
+        axis.text = element_text(size = 12))
+```
+
+```{r}
+size_510k_all <- size_count %>% 
+  filter(str_detect(reg_type, "FDA 510k")) %>% 
+  ggplot() + 
+  geom_col(aes(x = ddate, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "dodge", alpha = 0.9, color = "Dark Grey" ) + 
+  scale_fill_manual(values = size_col) + 
+  theme_minimal() + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2018-12-30","2021-05-15"))) +
+  guides(fill = FALSE) + 
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "Monthly Approvals", title = "FDA 510k (Surgical Masks)", fill = "Company Annual Sales") + 
+      theme(plot.title = element_text(size = 14, hjust = 0.5),
+        axis.text = element_text(size = 12), 
+        axis.text.x = element_blank()) 
+```
+
+```{r}
+size_reg_all <- size_510k_all / size_niosh_all
+```
+
+```{r, eval = FALSE}
+#OLD
+size_graph <- all_reg %>% 
+  filter(COUNTRY_CODE == "US" | private_us_subsidiary == 1, ddate < ymd(max_date), year(ddate) > 2019) %>% 
+  mutate(sales_dbh = case_when(
+    is.na(sales_dbh) ~ 900000, 
+    TRUE ~ sales_dbh
+  ), 
+  firm_size = case_when(
+    sales_dbh < 1000000 ~ "Under $1 Mil", 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ "$1M-$10M", 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ "$10M-$50M", 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ "$50M-$1B", 
+    sales_dbh >= 1000000000 ~ "$1B + "
+  ), 
+  size_pos = case_when(
+    sales_dbh < 1000000 ~ 5, 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ 4, 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ 3, 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ 2, 
+    sales_dbh >= 1000000000 ~ 1
+  ), 
+  month = month(ddate, label = TRUE), year = year(ddate), 
+  month_year = paste(month, substr(year, 3, 4), sep = ", ")) %>%
+  group_by(firm_size, month_year, month, year, reg_type, reg_pos, size_pos) %>% 
+  count() %>% 
+  mutate(ddate =  make_date(year = year, month = month, day = 01)) %>% 
+  ggplot() + 
+  geom_col(aes(x = reorder(month_year, desc(ddate)), y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "dodge", alpha = 0.9) + 
+    facet_wrap(~reorder(reg_type, reg_pos)) + 
+  coord_flip() + 
+  scale_fill_manual(values = size_col) + 
+  theme_minimal() + 
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "left") +
+  labs(x = "", y = "Monthly Approvals", title = "", fill = "Company Annual Sales") + 
+      theme(plot.title = element_text(size = 18),
+        axis.text = element_text(size = 12))
+```
+
+```{r, eval = FALSE}
+#OLD
+size_graph1 <- all_reg %>% 
+  filter(COUNTRY_CODE == "US" | private_us_subsidiary == 1, ddate < ymd(max_date)) %>% 
+  mutate(sales_dbh = case_when(
+    is.na(sales_dbh) ~ 900000, 
+    TRUE ~ sales_dbh
+  ), 
+  firm_size = case_when(
+    sales_dbh < 1000000 ~ "Under $1 Mil", 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ "$1M-$10M", 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ "$10M-$50M", 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ "$50M-$1B", 
+    sales_dbh >= 1000000000 ~ "$1B + "
+  ), 
+  size_pos = case_when(
+    sales_dbh < 1000000 ~ 5, 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ 4, 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ 3, 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ 2, 
+    sales_dbh >= 1000000000 ~ 1
+  ), 
+  month = month(ddate, label = TRUE), year = year(ddate), 
+  month_year = paste(month, substr(year, 3, 4), sep = ", ")) %>%
+  group_by(firm_size, month_year, month, year, reg_type, reg_pos, size_pos) %>% 
+  count() %>% 
+  mutate(ddate =  make_date(year = year, month = month, day = 01)) %>% 
+  ggplot() + 
+  geom_col(aes(x = reorder(month_year, desc(ddate)), y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "dodge", alpha = 0.9) + 
+    facet_wrap(~reorder(reg_type, reg_pos)) + 
+  coord_flip() + 
+  scale_fill_manual(values = size_col) + 
+  theme_minimal() + 
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "left") +
+  labs(x = "", y = "Monthly Approvals", title = "", fill = "Company Annual Sales") + 
+      theme(plot.title = element_text(size = 18),
+        axis.text = element_text(size = 12))
+```
+
+```{r}
+all_reg %>% 
+  filter(COUNTRY_CODE == "US" | private_us_subsidiary == 1, ddate < ymd(max_date), year(ddate) > 2019) %>% 
+  mutate(sales_dbh = case_when(
+    is.na(sales_dbh) ~ 900000, 
+    TRUE ~ sales_dbh
+  ), 
+  firm_size = case_when(
+    sales_dbh < 1000000 ~ "Tiny", 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ "Small", 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ "Medium", 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ "Large", 
+    sales_dbh >= 1000000000 ~ "Huge"
+  )) %>% 
+  view()
+```
+
+```{r}
+all_reg %>% 
+  filter(COUNTRY_CODE == "US" | private_us_subsidiary == 1, ddate < ymd(max_date), year(ddate) > 2019) %>% 
+  mutate(sales_dbh = case_when(
+    is.na(sales_dbh) ~ 900000, 
+    TRUE ~ sales_dbh
+  ), 
+  firm_size = case_when(
+    sales_dbh < 1000000 ~ "Tiny", 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ "Small", 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ "Medium", 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ "Large", 
+    sales_dbh >= 1000000000 ~ "Huge"
+  ), 
+  ddate1 = as.character(ddate)) %>% 
+  group_by(ddate, ddate1, firm_size, reg_type, reg_pos) %>% 
+  count() %>% 
+  ggplot() + 
+  geom_col(aes(x = ddate, y = n, group = firm_size, fill = firm_size), position = "dodge") + 
+    facet_wrap(~reorder(reg_type, reg_pos)) + 
+  coord_flip() + 
+  scale_fill_brewer(palette = "Set2") +
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  theme_minimal() + 
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "Monthly Approvals", title = "Monthly Regulatory Approvals for Surgical Masks and Respirators", fill = "") + 
+      theme(plot.title = element_text(size = 18),
+        axis.text = element_text(size = 12))
+```
+
+```{r}
+test <- country_graph / size_graph
+```
+
+
+```{r}
+all_reg %>% 
+  filter(COUNTRY_CODE == "US" | private_us_subsidiary == 1) %>% 
+  mutate(sales_dbh = case_when(
+    is.na(sales_dbh) ~ 900000, 
+    TRUE ~ sales_dbh
+  ), 
+  firm_size = case_when(
+    sales_dbh < 1000000 ~ "Tiny", 
+    sales_dbh >= 1000000 & sales_dbh < 10000000 ~ "Small", 
+    sales_dbh >= 10000000 & sales_dbh < 50000000 ~ "Medium", 
+    sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ "Large", 
+    sales_dbh >= 1000000000 ~ "Huge"
+  ), 
+  rdate = mdy(DATERECEIVED)) %>% 
+  filter(reg_type == "FDA 510k") %>% 
+  ggplot() + 
+  geom_point(aes(x = rdate, y = reorder(APPLICANT, sales_dbh), fill = firm_size), shape = 21, alpha = 0.5, color = "black", size = 5) + 
+  geom_point(aes(x = ddate, y = reorder(APPLICANT, sales_dbh), fill = firm_size), shape = 21, size = 5, inherit.aes = FALSE)+ 
+  geom_segment(aes(x = rdate, y = reorder(APPLICANT, sales_dbh), xend = ddate, yend = reorder(APPLICANT, sales_dbh)))
+```
+
+
+```{r}
+all_reg %>% 
+  filter(ddate < ymd(cutoff), COUNTRY_CODE == "US" | private_us_subsidiary == 1) %>% 
+  mutate(sales_dbh = case_when(
+    is.na(sales_dbh) ~ 900000, 
+    TRUE ~ sales_dbh
+  )) %>% 
+  group_by(sales_dbh) %>% 
+  count() %>% 
+  ggplot() +
+  geom_point(aes(x = sales_dbh, y = n))
+```
+
+
+```{r}
+all_reg %>% 
+  filter(ddate < ymd(cutoff), COUNTRY_CODE == "US" | private_us_subsidiary == 1) %>% 
+  mutate(sales_dbh = case_when(
+    is.na(sales_dbh) ~ 10000, 
+    TRUE ~ sales_dbh
+  )) %>% 
+  ggplot() + 
+  geom_point(shape = 21, aes(x = ddate, y = reorder(APPLICANT, sales_dbh), fill = reg_type), size = 5) + 
+  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
+  theme_minimal() + 
+  theme(axis.text.x=element_text(angle=60, hjust=1)) + 
+  facet_wrap(~reorder(reg_type, reg_pos)) +
+  labs(x = "", y = "", fill = "") 
+```
+
+
+```{r}
+  ggplot(aes(reorder(date, date_1), n, group = product)) +
+  geom_col(aes(fill = product), position = "stack", color = "Black") + 
+  theme_bw() +
+  scale_fill_manual(values = my_col2) +
+  theme(axis.text.x=element_text(angle=60, hjust=1), 
+        legend.position = "bottom") +
+  labs(x = "", y = "Monthly FDA 510K Clearance Decisions", title = "Monthly FDA 510K Clearance Decisions for Select COVID-19 Relevant Products", fill = "") + 
+      theme(plot.title = element_text(size = 18),
+        axis.text = element_text(size = 12))
+```
+
+
+## NIOSH
+
+```{r}
+niosh_all <- readRDS(box_here("niosh_webscraped.RDS"))
+```
+
+```{r}
+niosh_notes <- readRDS(box_here("niosh_notes_webscraped.RDS")) %>% 
+  mutate(Company = case_when(
+    str_detect(Company, "Honeywell") ~ "Honeywell International Inc.", 
+    TRUE ~ Company
+  )) %>% 
+  rename(private_label = Notes,
+         private_company_prnt = Company, 
+         prnt_phone = 'Phone Number') %>% 
+  mutate(private_company_prnt = str_replace(private_company_prnt, fixed("Private label of ", ignore_case = TRUE), ""), 
+         private_company_prnt = str_replace(private_company_prnt, "external icon", "")) %>% 
+  group_by(private_label) %>% 
+  select(-c("specific_product")) %>% 
+  mutate(tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  select(-c("tal"))
+```
+
+
+```{r}
+niosh_clean <- niosh_all %>% 
+  mutate(dist_auth = case_when(
+    str_detect(comp_info, fixed("distribution", ignore_case = TRUE)) ~ 1, 
+    TRUE ~ 0
+  )) %>% 
+  separate(comp_info, into = c("company", "contact_info"), sep = "external icon") %>% 
+  mutate(private_label = str_extract(contact_info, "\\[.+?\\]")) %>% 
+  mutate(private_label = str_replace_all(private_label, "\\[", ""), 
+         private_label = str_replace_all(private_label, "\\]", "")) %>% 
+  mutate(private_label = case_when(
+    str_detect(company, "Honeywell Int") & approval_num == "84A-6973" ~ "	*AI", 
+    TRUE ~ private_label
+  )) %>% 
+  left_join(niosh_notes, by = c("private_label")) %>% 
+  mutate(private_label = case_when(
+    is.na(private_label) ~ "0", 
+    TRUE ~ private_label
+  )) %>% 
+  mutate(obsolete = str_detect(model_no, fixed("obsolete", ignore_case = TRUE))|
+           str_detect(approval_num, "OBSOLETE")) %>% 
+  mutate(contact_info = str_trim(gsub("\\[[^][]*]", "", contact_info))) %>%  #get rid of notes reference from contact_info 
+  mutate(company = case_when(
+    str_detect(company, "Air Filtration") ~ "Air Filtration Solutions, Ltd.", 
+    TRUE ~ company), 
+    company = case_when(
+      str_detect(company, "Alpha Pro") ~ "Alpha Pro-Tech", 
+      TRUE ~ company), 
+    company = case_when(
+      str_detect(company, "Gerson") ~ "Louis M. Gerson Company, Inc.", 
+      TRUE ~ company
+    ), 
+    company = case_when(
+      str_detect(company, "Package") ~ "San M Package Company, Ltd.", 
+      TRUE ~ company
+    ) ,
+    company = case_when(
+      str_detect(company, "Venus") ~ "Venus Safety & Health", 
+      TRUE ~ company
+    ), 
+    company = case_when(
+      str_detect(company, "Xiantao Zhongyi") ~ "Xiantao Zhongyi Safety Protection Products", 
+      TRUE ~ company
+    ), 
+    company = case_when(
+      str_detect(company, "Honeywell") ~ "Honeywell International Inc.",
+      TRUE ~ company))
+```
+
+We start by cleaning the company info column, using the "external icon" identifier as a separating point and joining the product information with notes about whether or not it is a private label product (and who the private label is for). 
+
+We are now interested in the total number of unique companies, the countries companies come from, and the number of products each company had approved. We distinguish between companies that are private label manufacturers of larger companies. 
+
+We also remove observations that are marked as discontinued or obsolete. 
+
+```{r}
+niosh_nobs <- niosh_clean %>% 
+  filter(obsolete != 1) %>% 
+  mutate(appr_num = substring(approval_num, first = 5))
+```
+
+
+## Aproval Date 
+
+We now add our data on approval dates. 
+
+```{r}
+appr_date <- readRDS(box_here("appr_dates.RDS"))
+```
+
+```{r}
+niosh_appr <- left_join(niosh_nobs, appr_date, by = c("appr_num", "approval_num"))
+```
+
+```{r}
+niosh_appr_test <- anti_join(niosh_nobs, appr_date, by = c("appr_num"))
+```
+
+### Add new entries to existing one
+
+```{r}
+
+base_url <- "https://wwwn.cdc.gov/NIOSH-CEL/ApprovalDetails?schedule=84A&approvalNum="
+
+make_url <- function(x) {
+  URLencode(paste(base_url, x, sep = ""))
+}
+```
+
+
+```{r}
+get_date <- function(url) { 
+  table <- tryCatch(read_html(url) %>% 
+                     html_table(), error = function(e){NA})
+  
+  if(is.na(table[1])){
+     return(NA)
+  }
+  
+  else {
+    x1 <- table[3] 
+    x <- x1[[1]] %>% 
+      filter(X1 == "Approval Date") %>% 
+      select(X2) 
+  return(x[1,])
+  }
+ }
+```
+
+```{r}
+niosh_appr_test_date <- niosh_appr_test %>% ungroup() %>% 
+  distinct(approval_num, appr_num) %>% 
+  mutate(apprv_url = map(appr_num, make_url)) %>% 
+  arrange(appr_num) %>% 
+  mutate(appr_date = map(apprv_url, get_date))
+```
+
+```{r}
+appr_date <- bind_rows(appr_date, niosh_appr_test_date)
+```
+```{r}
+niosh_appr <- left_join(niosh_nobs, appr_date, by = c("appr_num", "approval_num"))
+```
+
+```{r}
+niosh_appr_test <- anti_join(niosh_nobs, appr_date, by = c("appr_num"))
+```
+
+```{r}
+saveRDS(appr_date, box_here("appr_dates.RDS"))
+```
+
+
+```{r}
+left_join(niosh_appr, niosh_parents, by = c("company"))
+```
+
+NOTES: Manual check of "FDA" approved respirators has entries for 2020 and later (but countries need to be manually fixed), and cross-referencing with the FDA database produces 0 results. Why does NIOSH/CDC say these are Ok? A: BC/ after 2018 NIOSH takes over approving surgical respirators from the FDA.  
+
+## Geocoding and Private Labels
+
+```{r}
+niosh_struc <- niosh_country_date %>% 
+  filter(str_detect(model_no, "\\(FDA\\)", negate = TRUE)) %>% 
+  group_by(company, appr_num, appr_date, specific_product, country) %>% 
+  summarise(models = n())
+```
+
+```{r}
+country_year <- niosh_struc %>% 
+  group_by(appr_num, appr_date, specific_product, country) %>% 
+  summarise(total_models = sum(models), mean_models = mean(models), companies = n()) %>% 
+  filter(str_detect(appr_num, "OBSOLETE", negate = TRUE)) %>% 
+  mutate(license = as.numeric(companies > 1))
+```
+
+```{r}
+approvals_struc <- country_year %>% 
+  group_by(appr_num, specific_product) %>%
+  mutate(countries = n()) %>% 
+  mutate(us = as.numeric(country == "USA")*5, 
+         china = as.numeric(country == "China")*3) %>% 
+  mutate(us = if_else(is.na(us), 0, us), 
+         china = if_else(is.na(china), 0, china)) %>% 
+  mutate(surg = as.numeric(specific_product == "Surgical N95 Respirator")*5) %>% 
+  group_by(appr_num) %>% 
+  mutate(surgical = case_when(
+           max(surg) == 5 ~ 1, 
+           TRUE ~ 0
+         )) %>% 
+  mutate(partnership = case_when(
+    max(us) == 5 & companies > 1 & countries == 1 ~ "US National Partnership", 
+    max(us) == 5 & max(china) == 3 & countries == 2 ~ "US-Chinese Partnership", 
+   max(us) == 5 & max(china) == 3 & countries > 2 ~ "US-Chinese Multi-National Partnership",
+    max(china) == 3 & companies > 1  & countries == 1 ~ "Chinese National Partnership", 
+    max(us) != 5 & max(china) == 3 & countries > 1 ~ "Chinese Multi-National Partnership", 
+    max(us) != 5 & max(china) != 3 & countries > 1 ~ "Foreign Multi-National Partnership",
+   max(us) != 5 & max(china) != 3 & countries == 1 & companies > 1 ~ "Foreign National Partnership",
+    max(us) == 5 & max(china) != 3 & companies == 1 ~ "No Partnership (US)",
+    max(us) != 5 & max(china) == 3 & companies == 1 ~ "No Partnership (Chinese)",
+    max(us) != 5 & max(china) != 3 & companies == 1 ~ "No Partnership (Other)"
+  ))
+```
+
+```{r}
+approvals_struc %>% 
+  group_by(appr_num, appr_date, partnership) 
+```
+
+
+```{r}
+niosh_country_date %>% 
+  group_by(country) %>% 
+  summarise(n = n()) %>% 
+  arrange(-n)
+```
+```{r}
+niosh_country_date %>% 
+  group_by(year(appr_date), )
+```
+
+```{r}
+niosh_country_date %>% 
+  mutate(appr_date = mdy(appr_date)) %>% 
+  group_by(country) %>% 
+  filter(year(appr_date) < 2019) %>% 
+  summarise(n = n()) %>% 
+  ggplot(aes(reorder(country, n), n, fill = country)) + 
+  geom_col(show.legend = FALSE) + 
+  coord_flip() + 
+  theme_bw() + 
+  labs(title = "NIOSH N95, N99, and N100 Certifications by Country Before 2018", x = "Country", y = "Certifications")
+```
+
+```{r}
+niosh_country_date %>% 
+  mutate(appr_date = mdy(appr_date)) %>% 
+  group_by(country) %>% 
+  filter(year(appr_date) < 2019) %>%
+  mutate(age = 2021 - year(appr_date), 
+         n = n()) %>% 
+  ggplot(aes(x = age, y = reorder(country, n), group = country)) + 
+  geom_boxplot(aes(fill = country)) + 
+  guides(fill = FALSE) + 
+  theme_bw() + 
+  labs(title = "Age of NIOSH N95, N99, and N100 Certifications by Country Before 2018", x = "Country", y = "Age")
+```
+
+```{r}
+niosh_country_date %>% 
+  mutate(appr_date = mdy(appr_date)) %>% 
+  group_by(country) %>% 
+  filter(year(appr_date) < 2019) %>%
+  mutate(age = 2021 - year(appr_date)) %>% 
+  summarise(mean_age = mean(age, na.rm = TRUE), n = n()) %>% 
+  ggplot(aes(reorder(country, n), mean_age)) + 
+  geom_col(aes(fill = country)) + 
+  geom_text(aes(reorder(country, n), mean_age/2, label = n)) + 
+  guides(fill = FALSE) + 
+  coord_flip() + 
+  theme_bw() + 
+  labs(title = "Mean Age of NIOSH N95, N99, and N100 Certifications by Country Before 2018", x = "Country", y = "Mean Age")
+```
+
+```{r}
+age_plot <- niosh_country_date %>% 
+  mutate(appr_date = mdy(appr_date)) %>% 
+  group_by(country) %>% 
+  filter(year(appr_date) < 2019) %>%
+  mutate(age = 2021 - year(appr_date), 
+         n = n()) %>% 
+  ggplot(aes(x = age, y = reorder(country, n), group = country)) + 
+  geom_density_ridges(aes(fill = country), alpha = 0.7) +
+  guides(fill = FALSE) + 
+  theme_bw() + 
+  labs(title = "Age of NIOSH N95, N99, and N100 Certifications by Country Before 2018", x = "Country", y = "Age")
+
+age_plot
+```
+
+```{r}
+age_plot +   geom_jitter(shape = 21, aes(fill = country), alpha = 0.5) 
+```
+
+
+```{r}
+niosh_country_date %>% 
+  mutate(appr_date = mdy(appr_date)) %>% 
+  group_by(country) %>% 
+  filter(year(appr_date) > 2019) %>% 
+  summarise(n = n()) %>% 
+  ggplot(aes(reorder(country, n), n, fill = country)) + 
+  geom_col(show.legend = FALSE) + 
+  geom_text(aes(label = n)) + 
+  coord_flip() + 
+  theme_bw() + 
+  labs(title = "NIOSH N95, N99, and N100 Certifications by Country", subtitle = "Jan, 2020 - June, 2021", x = "Country", y = "Certifications")
+```
+```{r}
+niosh_country_date %>% 
+  mutate(appr_date = mdy(appr_date)) %>% 
+  group_by(country) %>% 
+  filter(year(appr_date) > 2019) %>% 
+  count() %>% 
+  ggplot(aes(reorder(country, n), n, fill = country)) + 
+  geom_col(show.legend = FALSE) + 
+  coord_flip() + 
+  theme_bw() + 
+  labs(title = "NIOSH N95, N99, and N100 Certifications by Country Since Jan 2020", x = "Country", y = "Certifications")
+```
+
+
+```{r}
+niosh_country_date %>% 
+  mutate(appr_date = mdy(appr_date)) %>% 
+  group_by(appr_date, country) %>% 
+  count() %>% 
+  filter(year(appr_date) > 2019) %>% 
+  ggplot(aes(appr_date, n)) +
+  geom_col(aes(fill = country))
+```
+
+
+For each company, we have a unique row for each product that they offer on the NIOSH website. Some of these products were approved together. 
+
+We start by creating a variable to count the number of products approved by approval number. 
+
+```{r}
+niosh_all <- niosh_all %>% 
+  group_by(comp_info, approval_num) %>% 
+  mutate(products_appr = n()) %>% 
+  ungroup() 
+```
+
+```{r}
+hist(niosh_all$products_appr, breaks = "FD", main = "Number of Products per Approval Code Histogram", xlab = "Products per Approval Code")
+```
+```{r}
+niosh_all %>% 
+  filter(products_appr > 4) %>% 
+  select(comp_info) %>% 
+  unique()
+```
+
+We see that most companies only get 1 product approved per approval code, but some large companies get many products approved per approval code. 
+
+```{r}
+niosh_all %>% 
+  mutate(specific_product == case_when(
+    str_detect(model_no, "\\(FDA\\)") & specific_product == "N95 Respirator" ~ "Surgical N95 Respirator", 
+    TRUE ~ specific_product)) %>% 
+  filter(specific_product == "Surgical N95 Respirator") %>% 
+  mutate(model_no = str_replace_all(model_no, "\\(FDA\\)", "")) %>% 
+  group_by(comp_info, model_no) %>% 
+  count() %>% 
+  view()
+
+```
+
+
+```{r}
+niosh_all1 <- niosh_all %>% 
+  mutate(appr_num = substring(niosh_all$`Approval Number`, first = 5))
+```
+
+
+
+We then check to see if there are any new companies that need to be geocoded. 
+
+```{r}
+niosh_formaps <- anti_join(niosh_countrys, niosh_geocoded, by = c("company", "contact_info", "private_label", "specific_product"))
+```
+
+We geocode any that remain and manually impute any entries necessary. 
+
+
+```{r, echo = FALSE, Include = FALSE}
+api_key <- c("AIzaSyA1pwzK3BaX7_um-_TUrS7aGfCHQvp68b8")
+```
+
+We define our function, which will take an address as an input and output a latitude and longitude result. 
+
+```{r}
+geocodeAddress <- function(address) {
+  require(RJSONIO)
+  url <- "https://maps.googleapis.com/maps/api/geocode/json?address="
+  url <- URLencode(paste(url, address, sep = ""))
+  url <- URLencode(paste(url, "&key=", api_key, sep = ""))
+  x <- fromJSON(url, simplify = FALSE)
+  print(x$status)
+  if (x$status == "OK") {
+    out <- c(x$results[[1]]$geometry$location$lng,
+             x$results[[1]]$geometry$location$lat,
+             x$results[[1]]$formatted_address)
+  } else {
+    out <- NA
+  }
+  Sys.sleep(0.2)  # API only allows 5 requests per second
+  out
+}
+```
+
+```{r, include = FALSE}
+for(i in 1:nrow(niosh_formaps))
+{
+  result <- geocodeAddress(niosh_formaps$company[i])
+  niosh_formaps$long[i] <- as.numeric(result[1])
+  niosh_formaps$lat[i] <- as.numeric(result[2])
+  niosh_formaps$form_address[i] <- as.character(result[3])
+
+}
+```
+
+A note on geocoding: the automated geocoding is only partially accurate at best and misclassified at least a few companies as US companies when they are in fact, Chinese companies. A manual review is suggested.  
