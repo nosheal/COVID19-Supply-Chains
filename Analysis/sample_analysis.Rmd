@@ -27,8 +27,9 @@ library(ggrepel)
 library(lubridate)
 library(ggnewscale)
 library(readxl)
-library(htmltools)
-library(htmlwidgets)
+library(patchwork)
+#library(htmltools)
+#library(htmlwidgets)
 library(RJSONIO)
 ```
 ```{r}
@@ -213,7 +214,7 @@ sample_size <- sample_size_a / sample_size_b
 
 ##### Company Timelines 
 
-```{r}
+```{r, eval = FALSE}
 company_timelines <- matched_sample %>% 
   group_by(company) %>% 
   mutate(min_reg = min(c(niosh, fda_510, eua), na.rm = TRUE)) %>% 
@@ -232,14 +233,14 @@ company_timelines <- matched_sample %>%
   labs(x= "", y = "") 
 ```
 
-```{r}
+```{r, eval = FALSE}
 reg_line <- matched_sample %>%
   filter(niosh_counter == TRUE | fda_counter == TRUE) %>% 
   group_by(company) %>% 
   mutate(min_reg = min(c(niosh, fda_510, eua), na.rm = TRUE))
 ```
 
-```{r}
+```{r, eval = FALSE}
 com_time_reg <- company_timelines + 
   geom_segment(data = reg_line, aes(x = min_date, y = reorder(company, sales_dbh), xend = min_reg, yend = reorder(company, sales_dbh)))
 ```
@@ -303,7 +304,7 @@ val_count <- validated %>%
 
 
 ```{r}
-val_colors <- c(brewer.pal(9, "Set3")[9], brewer.pal(9, "Greys")[7], brewer.pal(9, "Set3")[1])
+val_colors <- c(brewer.pal(9, "Set3")[9], brewer.pal(9, "Greys")[7], brewer.pal(9, "Blues")[5])
 ```
 
 ```{r}
@@ -397,7 +398,7 @@ leg <- ggplot() +
 ```
 
 
-```{r}
+```{r, eval = FALSE}
 val_2 <- val_1 + 
   new_scale_fill() + 
   geom_histogram(data = val_dom, color = "black", aes(x = min_date, y = cumsum(..count..), group = reorder(firm_size, size_pos), fill = reorder(firm_size, size_pos)), binwidth =  15, position = position_stack(vjust = 2)) +
@@ -405,7 +406,7 @@ val_2 <- val_1 +
   labs(fill = "")
 ```
 
-```{r}
+```{r, eval = FALSE}
 val_leg <- val_2 + labs(fill = "Domestic Manufacturer Firm Size")
 ```
 
@@ -502,11 +503,12 @@ state_reg_graph <- matched_states %>%
   theme_bw() + 
   labs(x = "Companies", y = "", fill = "Regulatory Appproval") + 
   theme(legend.position = "top", 
-        axis.text = element_text(size = 14)) 
+        axis.text = element_text(size = 14), 
+        axis.text.y = element_text(size = 18)) 
 ```
 
 ```{r}
-state_reg_graph_label <- state_reg_graph +   geom_label(aes(x = total, y = reorder(state_abbr, total), label = appr_perc), size = 7, fill = brewer.pal(9, "Purples")[5]) + 
+state_reg_graph_label <- state_reg_graph +   geom_label(aes(x = -1, y = reorder(state_abbr, total), label = appr_perc), size = 7, fill = brewer.pal(9, "Purples")[5])  
 ```
 
 ```{r}
@@ -543,7 +545,7 @@ timing_test <- matched_states %>%
 reg_timing <- state_reg_graph + 
   new_scale_fill()+
   geom_col(data = timing_test, aes(x = n, y = reorder(state_abbr, total), group = reorder(shortage, -short_pos), fill = reorder(shortage, short_pos)), show.legend = FALSE) + 
-  geom_label(data = timing_test, aes(x = total, y = reorder(state_abbr, total), label = appr_perc), size = 7, fill = brewer.pal(9, "Purples")[5]) +
+  geom_label(data = timing_test, aes(x = -1, reorder(state_abbr, total), label = appr_perc), size = 7, fill = brewer.pal(9, "Purples")[5]) +
   scale_fill_manual(values = short_col) 
   
 ```
@@ -589,6 +591,6 @@ size_col1 <- c(brewer.pal(9, "Blues")[7], brewer.pal(9, "Blues")[6], brewer.pal(
 state_size <- state_reg_graph + 
   new_scale_fill()+
   geom_col(data = size_test, aes(x = n, y = reorder(state_abbr, total), group = reorder(firm_size, size_pos), fill = reorder(firm_size, size_pos)), show.legend = FALSE) + 
-  geom_label(data = size_test, aes(x = total, y = reorder(state_abbr, total), label = appr_perc), size = 7, fill = brewer.pal(9, "Purples")[5]) + 
+  geom_label(data = size_test, aes(x = -1, y = reorder(state_abbr, total), label = appr_perc), size = 7, fill = brewer.pal(9, "Purples")[5]) + 
   scale_fill_manual(values = size_col1) 
 ```

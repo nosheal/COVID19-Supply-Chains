@@ -559,7 +559,7 @@ thomas_amma %>%
 ```{r}
 match1_clean <- thomas_amma %>% 
   ungroup() %>% 
-  select(company, location, specific_product, useful, amma, dom_useful_num, manf_loc, min_date, max_date, min_aff, date, desc, bdm_country, address, address_man, manf_loc_amma, thomasnet, corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS, tot_entries) %>% 
+  select(company, location, specific_product, useful, amma, dom_useful_num, manf_loc, min_date, max_date, min_aff, date, date_founded, desc, bdm_country, address, address_man, manf_loc_amma, thomasnet, corporate_family_dbh, atsite_emp_dbh, all_site_emp_dbh, sales_dbh, DUNS, tot_entries) %>% 
   mutate(dom_useful_mark = dom_useful_num, 
          dom_useful_num = case_when(
     amma == 1 | dom_useful_num == 1 ~ 1, 
@@ -928,7 +928,7 @@ sample_address <- matched_sample %>%
 
 
 ```{r, echo = FALSE, Include = FALSE}
-api_key <- c("YOUR_KEY")
+api_key <- c("AIzaSyA1pwzK3BaX7_um-_TUrS7aGfCHQvp68b8")
 ```
 
 We define our function, which will take an address as an input and output a latitude and longitude result. 
@@ -1106,13 +1106,13 @@ sample_states$min_date_all[i] <-  min(sample_states$min_date[i], sample_states$f
 ```{r}
 sample_states %>% 
   filter(dom_useful_num == 1 | niosh_counter == TRUE | fda_counter == TRUE | contract_counter == TRUE | interview == 1) %>% 
-  select(company, address, state_name, dom_useful_num, min_date_all, min_date, min_aff, fda_510, eua, niosh, first_contract, niosh_counter, fda_counter, contract_counter, thomasnet, amma, specific_product, interview, sales_dbh, corporate_family_dbh, DUNS, numeric_duns) %>% 
+  select(company, address, state_name, dom_useful_num, min_date_all, min_date, min_aff, fda_510, eua, niosh, first_contract, niosh_counter, fda_counter, contract_counter, thomasnet, amma, specific_product, interview, sales_dbh, corporate_family_dbh, DUNS, numeric_duns, date_founded) %>% 
   view()
 ```
 ```{r}
 sample_states_clean <- sample_states %>% 
   filter(dom_useful_num == 1 | niosh_counter == TRUE | fda_counter == TRUE | contract_counter == TRUE | interview == 1) %>% 
-  select(company, address, form_address, state_name, state_abbr, specific_product, dom_useful_num, min_date_all, min_date, min_aff, fda_510, eua, niosh, first_contract, niosh_counter, fda_counter, contract_counter, thomasnet, amma, interview, sales_dbh, corporate_family_dbh, DUNS, numeric_duns, broad_product)  
+  select(company, address, form_address, state_name, state_abbr, specific_product, dom_useful_num, min_date_all, min_date, min_aff, fda_510, eua, niosh, first_contract, niosh_counter, fda_counter, contract_counter, thomasnet, amma, interview, sales_dbh, corporate_family_dbh, DUNS, numeric_duns, broad_product, date_founded)  
 ```
 
 ```{r}

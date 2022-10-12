@@ -1,0 +1,631 @@
+---
+title: "OpenCorporates"
+author: "Nikhil Kalathil"
+date: "6/7/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document provides a procedure to search for company data through the [OpenCorporates Api](https://api.opencorporates.com/documentation/API-Reference). In this document, we will want to 1) be able to match an existing company we know if to its Open Corporates Api; 2) Obtain incorporation date, address, industry codes, controlling untity, ultimate beneficial owner, and branch status data for the company; and 3) Obtain information about the company family tree using the [network](https://api.opencorporates.com/documentation/API-Reference#get-companies/:jurisdiction_code/:company_number/network) call. 
+
+```{r}
+library(jsonlite)
+library(tidyverse)
+library(readxl)
+```
+
+
+```{r}
+
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/"
+
+```
+
+```{r}
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+```
+
+## Validation Data 
+
+We will test our searches on a few companies: Luosh USA, Altor Saftey, Indiana Face Mask, United Saftey Technologies, and NYPPE. 
+
+NOTE: To quickly get validated information about these companies we use our AMMA member sample data. We start by filtering to just these companies, and then validate our methodology on the rest of the AMMA sample. 
+
+```{r}
+comp_check <- read_xlsx(box_here("usabdm_list.xlsx"))
+
+train_comps <- comp_check %>% 
+  filter(str_detect(company, "Altor") | str_detect(company, "Luosh") |  str_detect(company, "Indiana") | str_detect(company, "NYPPE") | str_detect(company, "United Safety"))
+```
+
+## Accessing the Open Corporates API
+
+We start by accessing the Open Corporates API, which we note can be found at: "https://api.opencorporates.com". 
+
+To perform a search for a specific company, our format would be: 
+"https://api.opencorporates.com/v0.4/companies/search?q=SEARCH+TERM"
+
+To access a company's information, our format would be: 
+"https://api.opencorporates.com/v0.4/companies/nl/COMPANYNUMBER" 
+
+To access a company's network, our format would be: "https://api.opencorporates.com/v0.4/companies/:jurisdiction_code/:company_number/network" 
+
+We note that to add filters and refine our searching, matching, and data recovery, we may need to modify some of these pieces of code.
+
+```{r}
+company_search_url <- "https://api.opencorporates.com/v0.4/companies/search?q="
+```
+
+We start by defining a function to get the raw JSON results of a search. We know that some of our search terms will return multiple results, and sum will return only one result. Ideally, we want to be able to separate our results for these two cases into two separate dataframes. 
+
+To do this, we can sketch out a general procuder: 
+
+1) Search for a Company Name, get JSON Object
+2) Count number of search entries
+
+Then SPLIT 
+
+3A) if length(entries) == 1: add either a) full company object data or b) company number to the data
+
+3B if length(entries) > 1: add either a) full entries object data or b) number of entries 
+
+
+```{r}
+base_search <- function(company_name) { 
+  url <- "https://api.opencorporates.com/v0.4/companies/search?q="
+  api <- "ojjyOF9sZ1xj1s1VXVNo"
+  url <- paste(url, company_name, sep = "")
+  url <- URLencode(paste(url, api, sep = "&api_token="))
+  x <- fromJSON(url, flatten = TRUE)
+  Sys.sleep(0.2)  # API only allows 5 requests per second
+  return(x)
+  }
+```
+
+```{r}
+test <- base_search("Luosh USA")
+test_multi <- base_search("Honeywell")
+```
+
+Examining this object, we can see that the information is formatted quite neatly, even in the case where there are multiple search results. 
+
+Thus, the first step is to extract the data that we need, and in the case where there were multiple search results, add a column to indicate this. 
+
+```{r}
+select_columns <- function(data) { 
+  
+  if (ncol(data) < 30 & ncol(data) >= 15) { 
+    data %>% 
+      select(name, company_number, company_type, jurisdiction_code, incorporation_date, dissolution_date, branch, branch_status, current_status, previous_names, industry_codes, search_results, search_term, search_results_num, source.url)
+  
+    }
+  
+  if (ncol(data) >= 30) {
+  
+     data %>% 
+      select(name, company_number, company_type, jurisdiction_code, incorporation_date, dissolution_date, branch, branch_status, current_status, previous_names, industry_codes, full_address = registered_address_in_full, locality = registered_address.locality, region = registered_address.region, post_code = registered_address.postal_code, country = registered_address.country, search_results, search_term, search_results_num, source.url) %>% 
+      mutate(dissolution_date = as.character(dissolution_date), 
+             branch = as.character(branch), 
+             branch_status = as.character(branch_status))
+  }
+  
+  else{
+    
+    data %>% 
+      select(name, company_number, incorporation_date, dissolution_date, search_term, search_results, search_results_num, source.url)
+    
+  }
+  
+  }
+```
+
+```{r}
+get_company_results <- function(company_name) {
+  
+  x <- base_search(company_name)
+  
+  if (length(x$results$companies) == 0) { 
+    
+    comp_info <- data.frame(search_term = as.character(company_name), 
+                            search_results = "No Matches", 
+                            search_results_num = 0)
+    
+  }
+  
+  else{
+  
+    comp_info <- x$results$companies %>% 
+      mutate(search_results = case_when(
+        nrow(x$results$companies) == 1 ~ "Single Match", 
+        nrow(x$results$companies) > 1 ~ "Multiple Matches", 
+        TRUE ~ "No Match"),
+        search_term = as.character(company_name),
+        search_results_num = nrow(x$results$companies))
+    
+    names(comp_info) <- sub("company.", "", names(comp_info))
+    
+    comp_info <- comp_info %>% 
+      select_columns()
+    
+  }
+  
+  #CLEAN COMPANY NAME INFO
+  
+  
+  #print(comp_info$search_term[1])
+  
+  return(comp_info)
+}
+```
+
+The above function returns a data.frame object with our search entry result. We will want to loop over a list of search terms and then bind the rows of multiple dataframes together. We note that we do not need, or even want, all of the data. 
+
+We focus on: name, company_number, jurisdiction_code, incorporation_date, dissolution_date, company_type, branch, branch_status, current_status, previous_names, registered_address_in_full, industry_codes. Since they are already defined, we will also take the locality, region, postal_code, and country variables. 
+
+We will then test our function, and use the test to create an empty dataframe. 
+
+```{r}
+test <- get_company_results("Luosh") 
+
+comp_info_holder <- test %>% 
+  filter(name != "Luosh USA LLC")
+```
+
+## Testing our Functions
+
+We now want to test our ability to loop over multiple search terms. To do this, we will our list of AMMA members. 
+
+```{r}
+format_search <- function(search_data) {
+  
+  remove <- c("Limited" ,"Ltd", "LTD", "Incorporated", "Company",  "Corporation", "Co.", "Inc", "Inc.",  "[[:punct:]]", "LLC", "llc")
+  
+  x <- search_data %>% 
+    mutate(comp_search = str_trim(str_remove_all(company, paste(remove, collapse = "|"))))
+  
+  x <- as.list(x$comp_search)
+  
+  return(x)
+  
+}
+```
+
+```{r}
+test <- get_company_results("Luosh")
+
+comp_info_holder <- test %>% 
+filter(name != "Luosh USA LLC")
+
+amma_search <- comp_check %>% 
+  filter(company != "Other") %>% format_search()
+  
+for (i in 1:length(amma_search)) { 
+    
+  #print(as.character(amma_search[i]))
+  comp_data <- get_company_results(as.character(amma_search[i])) 
+    
+  #view(comp_data)
+    
+  comp_info_holder <- bind_rows(comp_info_holder, comp_data)
+  }
+```
+
+```{r}
+get_search_results <- function(search_list) {
+  
+  test <- get_company_results("Luosh")
+  
+  comp_info_holder <- test %>% 
+  filter(name != "Luosh USA LLC")
+  
+  searchs <- search_list %>% 
+    format_search()
+    
+  for (i in 1:length(searchs)) { 
+      
+    print(as.character(searchs[i]))
+    comp_data <- get_company_results(as.character(searchs[i])) 
+      
+    #view(comp_data)
+      
+    comp_info_holder <- bind_rows(comp_info_holder, comp_data)
+  }
+  
+  return(comp_info_holder)
+}
+```
+
+
+## Evaluating the Functions
+
+We now want to evaluate the efficacy of our functions. 
+```{r}
+library(RColorBrewer)
+```
+
+```{r}
+comp_results <- comp_info_holder %>% 
+  filter(search_term != "Other") %>% 
+  mutate(search_results = case_when(
+    is.na(search_results) ~ "No Matches", 
+    TRUE ~ search_results)) %>% 
+  mutate(search_results_num = case_when(
+    search_results == "No Matches" ~ as.integer(0), 
+    TRUE ~ as.integer(search_results_num)
+  ))
+
+open_colors <- c(brewer.pal(9, "Set1")[1], brewer.pal(8, "Set2")[8], brewer.pal(9, "Set1")[2])
+
+amma_accuracy <- comp_results %>% 
+  group_by(search_term, search_results, search_results_num) %>% 
+  count() %>% 
+  group_by(search_results, search_results_num) %>% 
+  count() %>% 
+  ggplot() +
+  geom_col(aes(x = search_results_num, y = n, fill = search_results)) +
+  scale_fill_manual(values = open_colors) +
+  theme_bw() + 
+  labs(x = "Number of Search Results Returned", y = "Number of Search Terms", title = "OpenCorporates Search Performance", subtitle = paste("AMMA Members, N =", length(amma_search), sep = " "), fill = "") 
+
+
+
+amma_accuracy
+```
+```{r}
+open_corporates_accuracy <- function(data, source, search_terms) {
+  data %>% 
+    group_by(search_term, search_results, search_results_num) %>% 
+    count() %>% 
+    group_by(search_results, search_results_num) %>% 
+    count() %>% 
+    ggplot() +
+    geom_col(aes(x = search_results_num, y = n, fill = search_results)) +
+    scale_fill_manual(values = open_colors) +
+    theme_bw() + 
+    labs(x = "Number of Search Results Returned", y = "Number of Search Terms", title = "OpenCorporates Search Performance", subtitle = paste(source, length(search_terms) , sep = ", N = "), fill = "") 
+}
+```
+
+
+Let us assume that we can easily/accurately match entities when the number of search results is between 1 and 10. When no results or more than 30 results are returned, a more intensive verification procedure will need to be defined. 
+
+```{r}
+comp_results %>% 
+  mutate(search_accuracy = case_when(
+    search_results_num == 0 ~ "Missing", 
+    search_results_num > 0 & search_results_num < 15 ~ "Low-Effort Validation",
+    search_results_num >= 15 ~ "High Effort Validation"
+  )) %>% 
+  group_by(search_term, search_accuracy) %>% 
+  count() %>% 
+  group_by(search_accuracy) %>% 
+  count()
+
+
+```
+```{r}
+
+accuracy <- function(data) { 
+  data %>% 
+     mutate(search_accuracy = case_when(
+    search_results_num == 0 ~ "Missing", 
+    search_results_num > 0 & search_results_num < 15 ~ "Low-Effort Validation",
+    search_results_num >= 15 ~ "High Effort Validation"
+     )) 
+  }
+count_accuracy <- function(data) {
+  data %>% 
+    accuracy() %>% 
+    group_by(search_term, search_accuracy) %>% 
+    count() %>% 
+    group_by(search_accuracy) %>% 
+    count()
+}
+```
+
+We now want to perform this same procedure for the rest of our data, recording similar types of statistics. 
+
+## Check Rest of Sample
+
+```{r}
+val_sample <- readRDS(box_here("for_opencorp.RDS"))
+```
+
+```{r}
+val_join <- val_sample %>% 
+  mutate(id = seq(n()))
+
+val_comps <- val_sample %>% 
+  filter(sample == "Validated")
+
+checked_comps <- val_sample %>% 
+  filter(sample == "Checked")
+
+unchecked_comps <- val_sample %>% 
+  filter(sample == "Not Checked")
+```
+
+```{r}
+val_search <- format_search(val_sample) 
+```
+
+```{r}
+test <- get_company_results("Luosh")
+  
+comp_info_holder <- test %>% 
+  filter(name != "Luosh USA LLC")
+  
+val_search <- val_sample %>% 
+    format_search()
+    
+for (i in 1:length(val_search)) { 
+      
+  #print(as.character(val_search[i]))
+  comp_data <- get_company_results(as.character(val_search[i])) 
+      
+    #view(comp_data)
+      
+  comp_info_holder <- bind_rows(comp_info_holder, comp_data)
+  }
+```
+
+```{r}
+val_results <- comp_info_holder
+```
+
+```{r}
+val_entries <- val_results %>% filter(search_term %in% format_search(val_comps)) %>% open_corporates_accuracy(., "Validated Entries", format_search(val_comps))  
+
+val_entries
+```
+```{r}
+val_results %>% filter(search_term %in% format_search(val_comps)) %>% count_accuracy()
+```
+
+```{r}
+checked_entries <- val_results %>% filter(search_term %in% format_search(checked_comps)) %>% open_corporates_accuracy(., "Checked Entries", format_search(checked_comps))  
+
+checked_entries
+```
+```{r}
+val_results %>% filter(search_term %in% format_search(checked_comps)) %>% count_accuracy()
+```
+
+
+
+```{r}
+unchecked_entries <- val_results %>% filter(search_term %in% format_search(unchecked_comps)) %>% open_corporates_accuracy(., "Unchecked Entries", format_search(unchecked_comps)) 
+
+unchecked_entries
+```
+```{r}
+val_results %>% filter(search_term %in% format_search(unchecked_comps)) %>% count_accuracy()
+```
+
+## Date Distribution from OC data 
+
+
+We now perform a preliminary analysis of corporate networks and incorporation date using our open corporate data. 
+
+We must first clean our open corporates data to drop entries with missing or high-effort validation, as we cannot be sure that these firms are accurate. The above analysis demonstrates that even with excluding these entries, we still have a reasonably sized (but perhaps not representative) sample. 
+
+We also want to drop any entries dissolved before 2019 (to be safe)
+
+```{r}
+library(lubridate)
+```
+
+
+```{r}
+clean_check <- val_results %>% 
+  accuracy() %>% 
+  filter(search_accuracy == "Low-Effort Validation") %>% 
+  mutate(dissolution_date = ymd(dissolution_date)) %>% 
+  filter(year(dissolution_date) > 2018 | is.na(dissolution_date))
+```
+
+We also know that open corporate groups unique entities by their company number. Thus, we perform our analysis on corporate family size using search results as a (poor) proxy for corporate family. 
+
+We import our new entrant classification functions from the new entrants document, and proceed. We will have to modify these functions for use in this data
+
+```{r}
+entry_classification_base <- function(data) { 
+  data %>% 
+    mutate(firm_type = case_when(
+    year(incorporation_date) < 2020 ~ "Existing Firm",
+    year(incorporation_date) >= 2020 ~ "New Firm", 
+    is.na(incorporation_date) ~ "Missing Date Founded"
+    ))
+}
+```
+
+```{r}
+firm_counts1 <- function(data) {
+  data %>%  
+    group_by(company_number, search_results_num, firm_type) %>% 
+    count() %>% 
+    group_by(search_results_num, firm_type) %>% 
+    count() %>% 
+    group_by(firm_type) %>% 
+    mutate(individual_comp = case_when(search_results_num == 1 ~ n))
+}
+```
+
+```{r}
+clean_check %>% 
+  filter(search_term %in% format_search(val_comps)) %>% 
+  entry_classification_base() %>% 
+  firm_counts1()
+```
+
+```{r}
+clean_check %>% 
+  filter(search_term %in% format_search(checked_comps)) %>% 
+  entry_classification_base() %>% 
+  firm_counts1()
+```
+
+```{r}
+clean_check %>% 
+  filter(search_term %in% format_search(unchecked_comps)) %>% 
+  entry_classification_base() %>% 
+  firm_counts1()
+```
+```{r}
+entry_graphs <- function(data, filter_comps, company_group, company_subtitle) {
+  data %>% 
+    filter(search_term %in% format_search(filter_comps)) %>% 
+    entry_classification_base() %>% 
+    firm_counts1() %>% 
+    ggplot() + 
+    geom_point(position = "stack", aes(x = firm_type, y = n, group = search_results_num, fill = as.integer(search_results_num), size = search_results_num), shape = 21) +
+    guides(fill = "none") + 
+    theme_bw() + 
+    labs(x = "", y = "Number of Companies", size = "Corporate Network Proxy", title = company_group, subtitle = company_subtitle)
+}
+```
+
+
+
+```{r}
+oc_val <- clean_check %>% entry_graphs(., val_comps, "Pool of Actual Pivoters", "Manually Validated US Manf Location and/or Regulatory Approval")
+
+oc_val
+```
+
+```{r}
+oc_checked <- clean_check %>% 
+  entry_graphs(., checked_comps, "Pool of Companies that Expressed Interest, Didn't Pivot", "Manually validated Non-US Manf Location")
+
+oc_checked
+```
+
+
+```{r}
+oc_unchecked <- clean_check %>% 
+  entry_graphs(., unchecked_comps, "Pool of Companies that Expressed Interest", "Thomasnet Supplier, Unvalidated")
+
+oc_unchecked
+```
+
+
+```{r}
+firm_counts2 <- function(data) {
+  data %>%  
+    group_by(sales_dbh, corporate_family_dbh, firm_type) %>% 
+    count()
+}
+```
+
+## other
+
+```{r}
+company_results <- get_company_info(search_terms_test)
+```
+
+```{r}
+search_terms_test <- c("Luosh", "Honeywell")
+```
+
+```{r}
+get_company_info <- function(search_terms) {
+  
+  test <- get_company_results("Luosh") 
+
+  comp_info_holder <- test %>% 
+  filter(name != "Luosh USA LLC")
+  
+  for (i in 1:length(search_terms)) { 
+    
+    print(search_terms[i])
+    comp_data <- get_company_results(as.character(search_terms[i]))
+    
+    view(comp_data)
+    
+    comp_info_holder <- bind_rows(comp_info_holder, comp_data)
+    
+  }
+  
+  company_results <- comp_info_holder 
+  
+  return(company_results)
+  
+}
+
+```
+
+## Testing Final Functions on Validation Set
+
+We can now test our function on our AMMA member list. This will give us an idea of how accurate our searches will be in our general population. 
+
+
+```{r}
+amma_search <- as.list(comp_check$company)
+```
+
+```{r}
+amma_results <- get_company_info(amma_search)
+```
+
+
+well as how to check the number of search entries returned. We immediately will want to define two procedures based on if there is 1 or more than 1 entry for a specific search string. 
+
+We also note that the output that we can get from this search is a COMPANY object. This corresponds to a search for a specific company, when we know the company number. Thus, in the case where our search string provides a perfect match, we will output the company object. 
+
+```{r}
+
+get_entries <- function(company_name){ 
+  entries <- get_base(company_name)$results$companies
+  return(entries)
+}
+
+count_entries <- function(entry) { 
+  return(length(entry))}
+
+```
+
+
+```{r}
+count_entries <- function(company_name){
+  entries <- get_base(company_name)$results$companies
+  
+  if (length(entries) == 1) {
+    
+    x <- entries[[1]]$company
+    
+    return(x)
+  }
+  
+  else { 
+    print("Needs Manual Checking")
+    return(entries)
+    }
+}
+```
+
+
+
+```{r}
+geocodeAddress <- function(address) {
+  require(RJSONIO)
+  url <- "https://maps.googleapis.com/maps/api/geocode/json?address="
+  url <- URLencode(paste(url, address, sep = ""))
+  url <- URLencode(paste(url, "&key=", api_key, sep = ""))
+  x <- fromJSON(url, simplify = FALSE)
+  print(x$status)
+  if (x$status == "OK") {
+    out <- c(x$results[[1]]$geometry$location$lng,
+             x$results[[1]]$geometry$location$lat,
+             x$results[[1]]$formatted_address)
+  } else {
+    out <- NA
+  }
+  Sys.sleep(0.2)  # API only allows 5 requests per second
+  out
+}
+```
