@@ -40,8 +40,8 @@ marker = mdy("Aug, 2020")
 int_raw <- interviews_raw %>% 
   mutate(facility_size_dbh = as.numeric(str_trim(gsub(",", "", facility_size_dbh))),
          DUNS = str_trim(gsub("-", "", DUNS)),
-         idea_date = mdy(idea), 
-         op_date = mdy(Operational), 
+         idea_date = mdy(idea)-19, 
+         op_date = mdy(Operational)-19, 
     post_july = case_when(
       op_date >= marker ~ "August, 20 or After", 
       op_date <= marker ~ "Before August, 20"
@@ -51,14 +51,29 @@ int_raw <- interviews_raw %>%
     ), 
    company = case_when(
      str_detect(company, "AmeriShield") ~ "Premium-PPE Amerishield",
-     str_detect(company, "Protective Health Gear") ~ "PGH",
+     str_detect(company, "Protective Health Gear") ~ "Firm X",
      str_detect(company, "Honeywell") ~ "Honeywell",
      TRUE ~ company), 
    stop_start = case_when(
      str_detect(company, "Advoque") ~ mdy("09/01/20"), 
      str_detect(company, "NFI") ~ mdy("05/01/21")), 
    stop_end = case_when(
-     str_detect(company, "Advoque") ~ mdy("01/01/21")))
+     str_detect(company, "Advoque") ~ mdy("01/01/21")), 
+   other_site = case_when(
+     str_detect(company, "Patriot") ~ mdy("06/01/2020")
+   ), 
+   large_date = case_when(
+     sales_dbh > 40000000 ~ op_date
+   ),
+   fast_date = case_when(
+     op_date < mdy("06/01/2020") & sales_dbh < 40000000 ~ op_date
+   ), 
+   int_date = case_when(
+     op_date >= mdy("06/01/2020") & op_date < mdy("09/01/2020") & sales_dbh < 40000000 ~ op_date
+   ), 
+   slow_date = case_when(
+     op_date >= mdy("09/01/2020") ~ op_date
+   )) 
 ```
 
 
@@ -66,13 +81,17 @@ int_raw <- interviews_raw %>%
 int_graph <- int_raw %>% 
   filter(specific_product != "Melt Blown") %>% 
   ggplot() +
-  geom_segment(aes(x = idea_date, xend = op_date, y = reorder(company, atsite_emp_dbh), yend = reorder(company, atsite_emp_dbh)), linetype = 2) + 
-  geom_point(shape = 21, aes(x = idea_date, y = reorder(company, atsite_emp_dbh) ), size = 2, alpha = 0.5, fill = brewer.pal(8, "Set2")[1]) + 
+  geom_vline(aes(xintercept = mdy("06/01/2020"))) + 
+  geom_vline(aes(xintercept = mdy("09/01/2020"))) + 
+  geom_segment(aes(x = idea_date, xend = op_date, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), linetype = 2) + 
+  geom_point(shape = 21, aes(x = idea_date, y = reorder(company, sales_dbh) ), size = 2, alpha = 0.5, fill = brewer.pal(8, "Set2")[1]) + 
+  geom_segment(aes(x=other_site, xend = op_date, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), size = 3, color = brewer.pal(8, "Set3")[1], alpha = 0.7) + 
   #geom_text(aes(x = idea_date, y = reorder(company, atsite_emp_dbh)), label = "Idea",  size = 4, color = "Black") + 
-  geom_point(shape = 21, aes(x = op_date, y = reorder(company, atsite_emp_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
-  geom_segment(aes(x=stop_start, xend = stop_end, y = reorder(company, atsite_emp_dbh), yend = reorder(company, atsite_emp_dbh)), size = 3, color = "Dark Red", alpha = 0.4) + 
-  geom_text(aes(stop_start, y = reorder(company, atsite_emp_dbh)), label = "X", color = "Dark Red", fontface = "bold", size = 3, vjust = 0.19) + 
-  geom_point(shape = 21, aes(x = stop_end, y = reorder(company, atsite_emp_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
+  geom_point(shape = 21, aes(x = other_site, y = reorder(company, sales_dbh)), size = 4, fill = brewer.pal(8, "Set3")[6], alpha = 0.6) + 
+  geom_point(shape = 21, aes(x = op_date, y = reorder(company, sales_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
+  geom_segment(aes(x=stop_start, xend = stop_end, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), size = 3, color = "Dark Red", alpha = 0.4) + 
+  geom_text(aes(stop_start, y = reorder(company, sales_dbh)), label = "X", color = "Dark Red", fontface = "bold", size = 3, vjust = 0.19) + 
+  geom_point(shape = 21, aes(x = stop_end, y = reorder(company, sales_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
   theme_bw() + 
   scale_x_date(date_labels = "%b", breaks = "month") + 
   labs(x = "", y = "", fill = "") + 
@@ -82,7 +101,55 @@ int_graph <- int_raw %>%
         legend.position = "bottom") 
 ```
 
+```{r}
+int_large <- int_raw %>% 
+  filter(specific_product != "Melt Blown") %>% 
+  ggplot() +
+  geom_vline(aes(xintercept = mdy("06/01/2020"))) + 
+  geom_vline(aes(xintercept = mdy("09/01/2020"))) + 
+  geom_segment(aes(x = idea_date, xend = op_date, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), linetype = 2) + 
+  geom_point(shape = 21, aes(x = idea_date, y = reorder(company, sales_dbh) ), size = 2, alpha = 0.5, fill = "Dark Grey") + 
+  geom_segment(aes(x=other_site, xend = op_date, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), size = 3, color = "Dark Grey", alpha = 0.7) + 
+  #geom_text(aes(x = idea_date, y = reorder(company, atsite_emp_dbh)), label = "Idea",  size = 4, color = "Black") + 
+  geom_point(shape = 21, aes(x = other_site, y = reorder(company, sales_dbh)), size = 4, fill = "Light Grey", alpha = 0.6) + 
+  geom_point(shape = 21, aes(x = op_date, y = reorder(company, sales_dbh)), size = 4, fill = "Light Grey", alpha = 0.7) + 
+  geom_segment(aes(x=stop_start, xend = stop_end, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), size = 3, color = "Light Grey", alpha = 0.4) + 
+  geom_text(aes(stop_start, y = reorder(company, sales_dbh)), label = "X", color = "Light Grey", fontface = "bold", size = 3, vjust = 0.19) + 
+  geom_point(shape = 21, aes(x = stop_end, y = reorder(company, sales_dbh)), size = 4, fill = "Light Grey") + 
+  geom_point(shape = 21, aes(x = large_date, y = reorder(company, sales_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
+  theme_bw() + 
+  scale_x_date(date_labels = "%b", breaks = "month") + 
+  labs(x = "", y = "", fill = "") + 
+  theme(axis.text = element_text(size = 15), 
+        #axis.text.x=element_text(angle=60, hjust=1),
+        title = element_text(size = 18), 
+        legend.position = "bottom") 
+```
 
+```{r}
+int_fast <- int_raw %>% 
+  filter(specific_product != "Melt Blown") %>% 
+  ggplot() +
+  geom_vline(aes(xintercept = mdy("06/01/2020"))) + 
+  geom_vline(aes(xintercept = mdy("09/01/2020"))) + 
+  geom_segment(aes(x = idea_date, xend = op_date, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), linetype = 2) + 
+  geom_point(shape = 21, aes(x = idea_date, y = reorder(company, sales_dbh) ), size = 2, alpha = 0.5, fill = "Dark Grey") + 
+  geom_segment(aes(x=other_site, xend = op_date, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), size = 3, color = "Dark Grey", alpha = 0.7) + 
+  #geom_text(aes(x = idea_date, y = reorder(company, atsite_emp_dbh)), label = "Idea",  size = 4, color = "Black") + 
+  geom_point(shape = 21, aes(x = other_site, y = reorder(company, sales_dbh)), size = 4, fill = "Light Grey", alpha = 0.6) + 
+  geom_point(shape = 21, aes(x = op_date, y = reorder(company, sales_dbh)), size = 4, fill = "Light Grey", alpha = 0.7) + 
+  geom_segment(aes(x=stop_start, xend = stop_end, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), size = 3, color = "Dark Red", alpha = 0.4) + 
+  geom_text(aes(stop_start, y = reorder(company, sales_dbh)), label = "X", color = "Light Grey", fontface = "bold", size = 3, vjust = 0.19) + 
+  geom_point(shape = 21, aes(x = stop_end, y = reorder(company, sales_dbh)), size = 4, fill = "Light Grey") + 
+  geom_point(shape = 21, aes(x = fast_date, y = reorder(company, sales_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
+  theme_bw() + 
+  scale_x_date(date_labels = "%b", breaks = "month") + 
+  labs(x = "", y = "", fill = "") + 
+  theme(axis.text = element_text(size = 15), 
+        #axis.text.x=element_text(angle=60, hjust=1),
+        title = element_text(size = 18), 
+        legend.position = "bottom") 
+```
 
 
 ```{r}
@@ -135,25 +202,85 @@ int_NIOSH <- int_reg %>%
 
 ```{r}
 int_reg_graph <- int_graph + 
-  geom_point(data = int_510, aes(x = ddate, y = reorder(company, atsite_emp_dbh)), shape = 22, color = "black", size = 5, fill = brewer.pal(9, "Purples")[3]) + 
-  geom_point(data = int_NIOSH, aes(x = ddate, y = reorder(company, atsite_emp_dbh)), shape = 22, size = 5, fill = brewer.pal(9, "Purples")[6]) + 
-  geom_point(data = int_eua, aes(x = ddate, y = reorder(company, atsite_emp_dbh)), shape = 22, size = 4, fill = brewer.pal(9, "Purples")[3], alpha = 0.6)
+  geom_point(data = int_510, aes(x = ddate, y = reorder(company, sales_dbh)), shape = 22, color = "black", size = 5, fill = brewer.pal(9, "Purples")[3]) + 
+  geom_point(data = int_NIOSH, aes(x = ddate, y = reorder(company, sales_dbh)), shape = 22, size = 5, fill = brewer.pal(9, "Purples")[6]) + 
+  geom_point(data = int_eua, aes(x = ddate, y = reorder(company, sales_dbh)), shape = 22, size = 4, fill = brewer.pal(9, "Purples")[3], alpha = 0.6)
+```
+
+
+```{r}
+time_reg <- function(data, date, date2, sales_lim){
+  time_holder <- data %>% filter(op_date >= mdy(date) & op_date < mdy(date2), sales_dbh < as.numeric(sales_lim))
+
+  time_eua <- time_holder %>% 
+  filter(reg_type == " FDA EUA (Surgical Masks)") 
+
+time_510 <- time_holder %>% 
+  filter(reg_type == "FDA 510k (Surgical Masks)")
+
+time_NIOSH <- time_holder %>% 
+  filter(reg_type == "NIOSH (Respirators)")
+
+int_time <- time_holder %>% 
+  ggplot() +
+  geom_vline(aes(xintercept = mdy("06/01/2020"))) + 
+  geom_vline(aes(xintercept = mdy("09/01/2020"))) + 
+  geom_segment(aes(x = idea_date, xend = op_date, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), linetype = 2) + 
+  geom_point(shape = 21, aes(x = idea_date, y = reorder(company, sales_dbh) ), size = 2, alpha = 0.5, fill = brewer.pal(8, "Set2")[1]) + 
+  geom_segment(aes(x=other_site, xend = op_date, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), size = 3, color = brewer.pal(8, "Set3")[1], alpha = 0.7) + 
+  #geom_text(aes(x = idea_date, y = reorder(company, atsite_emp_dbh)), label = "Idea",  size = 4, color = "Black") + 
+  geom_point(shape = 21, aes(x = other_site, y = reorder(company, sales_dbh)), size = 4, fill = brewer.pal(8, "Set3")[6], alpha = 0.6) + 
+  geom_point(shape = 21, aes(x = op_date, y = reorder(company, sales_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
+  geom_segment(aes(x=stop_start, xend = stop_end, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), size = 3, color = "Dark Red", alpha = 0.4) + 
+  geom_text(aes(stop_start, y = reorder(company, sales_dbh)), label = "X", color = "Dark Red", fontface = "bold", size = 3, vjust = 0.19) + 
+  geom_point(shape = 21, aes(x = stop_end, y = reorder(company, sales_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
+  theme_bw() + 
+  scale_x_date(date_labels = "%b", breaks = "month", expand = c(0,0), limits = c(mdy("01/01/2020"), mdy("05/30/2021"))) +   labs(x = "", y = "", fill = "") + 
+  theme(axis.text = element_text(size = 15), 
+        #axis.text.x=element_text(angle=60, hjust=1),
+        title = element_text(size = 18), 
+        legend.position = "bottom") 
+
+time_graph <- int_time + 
+  geom_point(data = time_510, aes(x = ddate, y = reorder(company, sales_dbh)), shape = 22, color = "black", size = 5, fill = brewer.pal(9, "Purples")[3]) + 
+  geom_point(data = time_NIOSH, aes(x = ddate, y = reorder(company, sales_dbh)), shape = 22, size = 5, fill = brewer.pal(9, "Purples")[6]) + 
+  geom_point(data = time_eua, aes(x = ddate, y = reorder(company, sales_dbh)), shape = 22, size = 4, fill = brewer.pal(9, "Purples")[3], alpha = 0.6)
+
+return(time_graph)
+
+}
 ```
 
 ```{r}
+fast_graph <- time_reg(int_reg,"01/01/2020", "06/01/2020", 55000000)
+medium_graph <- time_reg(int_reg, "06/01/2020", "09/01/2020", 10000000000000)
+slow_graph <- time_reg(int_reg, "09/01/2020", "08/20/2021", 10000000000000)
+```
+
+
+
+```{r}
 int_fast <- int_raw %>% 
-  filter(specific_product != "Melt Blown", op_date < mdy("06/01/20"), atsite_emp_dbh < 500) %>% 
+  filter(specific_product != "Melt Blown", op_date < mdy("06/01/20"), atsite_emp_dbh < 500) %>%
   ggplot() +
-  geom_segment(aes(x = idea_date, xend = op_date, y = reorder(company, atsite_emp_dbh), yend = reorder(company, atsite_emp_dbh)), linetype = 2) + 
-  geom_point(shape = 21, aes(x = idea_date, y = reorder(company, atsite_emp_dbh) ), size = 2, alpha = 0.5, fill = brewer.pal(8, "Set2")[1]) + 
-  geom_point(shape = 21, aes(x = op_date, y = reorder(company, atsite_emp_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
+  geom_vline(aes(xintercept = mdy("06/01/2020"))) + 
+  geom_vline(aes(xintercept = mdy("09/01/2020"))) + 
+  geom_segment(aes(x = idea_date, xend = op_date, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), linetype = 2) + 
+  geom_point(shape = 21, aes(x = idea_date, y = reorder(company, sales_dbh) ), size = 2, alpha = 0.5, fill = brewer.pal(8, "Set2")[1]) + 
+  geom_segment(aes(x=other_site, xend = op_date, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), size = 3, color = brewer.pal(8, "Set3")[1], alpha = 0.7) + 
+  #geom_text(aes(x = idea_date, y = reorder(company, atsite_emp_dbh)), label = "Idea",  size = 4, color = "Black") + 
+  geom_point(shape = 21, aes(x = other_site, y = reorder(company, sales_dbh)), size = 4, fill = brewer.pal(8, "Set3")[6], alpha = 0.6) + 
+  geom_point(shape = 21, aes(x = op_date, y = reorder(company, sales_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
+  geom_segment(aes(x=stop_start, xend = stop_end, y = reorder(company, sales_dbh), yend = reorder(company, sales_dbh)), size = 3, color = "Dark Red", alpha = 0.4) + 
+  geom_text(aes(stop_start, y = reorder(company, sales_dbh)), label = "X", color = "Dark Red", fontface = "bold", size = 3, vjust = 0.19) + 
+  geom_point(shape = 21, aes(x = stop_end, y = reorder(company, sales_dbh)), size = 4, fill = brewer.pal(8, "Set2")[1]) + 
   theme_bw() + 
-  scale_x_date(date_labels = "%b, %y", breaks = "month") + 
-  labs(x = "", y = "", fill = "") + 
+  scale_x_date(date_labels = "%b", breaks = "month", expand = c(0,0), limits = c(mdy("01/01/2020"), mdy("05/30/2021"))) +   labs(x = "", y = "", fill = "") + 
   theme(axis.text = element_text(size = 15), 
-        axis.text.x=element_text(angle=60, hjust=1),
+        #axis.text.x=element_text(angle=60, hjust=1),
         title = element_text(size = 18), 
         legend.position = "bottom") 
+  
 
 int_fast
 ```
@@ -226,6 +353,13 @@ int_raw %>%
 int_clean <- int_raw %>% 
     select(company, product, financing, labor, machines, material, testing, quality_control) %>% 
   pivot_longer(cols = -c("company"), names_to = "production_step", values_to = "resource_origin") %>% 
+  mutate(resource_tracker = case_when(
+    str_detect(resource_origin, "Parent Firm") ~ 5, 
+    str_detect(resource_origin, "Existing Relationships") ~ 4, 
+    str_detect(resource_origin, "Existing Partnership") ~ 3, 
+    str_detect(resource_origin, "Built") ~ 2, 
+    str_detect(resource_origin, "Outsourced") ~ 1
+  )) %>% 
   mutate(resource_count = case_when(
     str_detect(resource_origin, "Parent Firm") | str_detect(resource_origin, "External Partnership") | str_detect(resource_origin, "Relationship") ~ 1, 
     TRUE ~ 0
@@ -240,6 +374,45 @@ int_clean <- int_raw %>%
       atsite_emp_dbh > 500 ~ company
     ))
 ```
+
+```{r}
+int_resource <- int_raw %>% 
+  filter(!is.na(financing)) %>% 
+    select(company, product, financing, labor, machines, material, testing, quality_control, op_date) %>% 
+  mutate(across(-c("company", "op_date"), ~ case_when(
+    str_detect(., "Parent Firm") ~ 5, 
+    str_detect(., "Existing Relationships") ~ 4, 
+    str_detect(., "Partnership") ~ 3, 
+    str_detect(., "Built") ~ 2, 
+    str_detect(., "Outsourced") ~ 1
+  )))
+```
+
+```{r}
+library(fmsb)
+```
+
+
+```{r}
+colors_border=c( rgb(0.2,0.5,0.5,0.9), rgb(0.8,0.2,0.5,0.9)  )
+colors_in=c("Blue", "Orange", "Green", "Gold", "Purple")
+
+int_test <- int_resource %>% filter(company == "Altor Safety") %>% select(-c("company", "op_date"))
+
+
+radarchart(int_test, axistype=1, 
+
+  #custom polygon
+  pcol=colors_border , pfcol=colors_in , plwd=4, plty=1 , 
+
+  #custom the grid
+  cglcol="grey", cglty=1, axislabcol="grey", caxislabels=seq(1,6,1), cglwd=1.1,
+
+  #custom labels
+  vlcex=0.8 
+  )
+```
+
 ```{r}
 time_pal <- c(brewer.pal(8, "Dark2")[7], brewer.pal(8, "Dark2")[6])
 ```

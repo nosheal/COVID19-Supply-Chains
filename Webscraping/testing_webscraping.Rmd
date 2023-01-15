@@ -27,7 +27,7 @@ library(here)
 
 ```{r}
 
-box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Tests/Thomasnet Pulls/01_11_2021"
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Tests/Thomasnet Pulls/06_07_2021"
 
 ```
 
@@ -266,7 +266,7 @@ covid_tk <- clean_scraped1(covid_tk_raw) %>%
 Step 4: Save
 
 ```{r}
-saveRDS(covid_tk, box_here("/covid_tk_01112021.RDS"))
+saveRDS(covid_tk, box_here("/covid_tk_06072021.RDS"))
 ```
 
 ### Other Test Kits
@@ -296,13 +296,13 @@ sero_tk <- clean_scraped1(sero_tk_raw) %>%
 Step 4: Save Data
 
 ```{r}
-saveRDS(sero_tk, box_here("/sero_tk_01112021.RDS"))
+saveRDS(sero_tk, box_here("/sero_tk_06072021.RDS"))
 ```
 
 
 ```{r}
 test_end <- bind_rows(covid_tk, sero_tk) %>% 
-  saveRDS(box_here("/test_end_01112021.RDS"))
+  saveRDS(box_here("/test_end_06072021.RDS"))
 ```
 
 
@@ -332,7 +332,7 @@ oro_swabs <- clean_scraped1(oro_swabs_raw) %>%
 Step 4: Save Data
 
 ```{r}
-saveRDS(oro_swabs, box_here("/oro_swabs_01112021.RDS"))
+saveRDS(oro_swabs, box_here("/oro_swabs_06072021.RDS"))
 ```
 
 ### Nasopharyngeal Flocked Swabs
@@ -360,7 +360,7 @@ naso_swabs <- clean_scraped1(naso_swabs_raw) %>%
 Step 4: Save Data
 
 ```{r}
-saveRDS(naso_swabs, box_here("/naso_swabs_01112021.RDS"))
+saveRDS(naso_swabs, box_here("/naso_swabs_06072021.RDS"))
 ```
 
 ### Viral Transport Medium (VTM)
@@ -388,7 +388,7 @@ vtm <- clean_scraped1(vtm_raw) %>%
 Step 4: Save Data
 
 ```{r}
-saveRDS(vtm, box_here("/vtm_01112021.RDS"))
+saveRDS(vtm, box_here("/vtm_06072021.RDS"))
 ```
 
 
@@ -420,7 +420,7 @@ pcm <- clean_scraped1(pcm_raw) %>%
 Step 4: Save Data
 
 ```{r}
-saveRDS(pcm, box_here("/pcm_01112021.RDS"))
+saveRDS(pcm, box_here("/pcm_06072021.RDS"))
 ```
 
 ```{r}
@@ -429,7 +429,7 @@ pcm_medical <- pcm %>%
 ```
 
 ```{r}
-saveRDS(pcm_medical, box_here("/pcm_medical_01112021.RDS"))
+saveRDS(pcm_medical, box_here("/pcm_medical_06072021.RDS"))
 ```
 
 
@@ -457,7 +457,7 @@ rna_ext <- clean_scraped1(rna_ext_raw) %>%
 Step 4: Save Data
 
 ```{r}
-saveRDS(rna_ext, box_here("/rna_ext_01112021.RDS"))
+saveRDS(rna_ext, box_here("/rna_ext_06072021.RDS"))
 ```
 
 ### Nucleotides
@@ -485,7 +485,7 @@ nucleotides <- clean_scraped1(nucleotides_raw) %>%
 Step 4: Save Data
 
 ```{r}
-saveRDS(nucleotides, box_here("/nucleotides_01112021.RDS"))
+saveRDS(nucleotides, box_here("/nucleotides_06072021.RDS"))
 ```
 
 ### Reagents: 
@@ -648,7 +648,7 @@ reagents_full <- bind_rows(reagents, viro_reagents)
 ```
 
 ```{r}
-saveRDS(reagents_full, box_here("/reagents_full_01112021.RDS"))
+saveRDS(reagents_full, box_here("/reagents_full_06072021.RDS"))
 ```
 
 
@@ -663,7 +663,7 @@ reagents_all <- reagents %>%
 ```
 
 ```{r}
-saveRDS(reagents_all, box_here("/reagents_all_01112021.RDS"))
+saveRDS(reagents_all, box_here("/reagents_all_06072021.RDS"))
 ```
 
 
@@ -675,7 +675,7 @@ test_int <- bind_rows(oro_swabs, naso_swabs) %>%
   bind_rows(rna_ext) %>% 
   bind_rows(nucleotides) %>%
   bind_rows(reagents_all) %>% 
-  saveRDS(box_here("/test_int_01112021.RDS"))
+  saveRDS(box_here("/test_int_06072021.RDS"))
 ```
 
 ### Other Products
@@ -805,7 +805,7 @@ other_products <- bind_rows(vials_all, pipettes_all) %>%
 ```
 
 ```{r}
-saveRDS(other_products, box_here("/test_other_01112021.RDS"))
+saveRDS(other_products, box_here("/test_other_06072021.RDS"))
 ```
 
 

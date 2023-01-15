@@ -1,0 +1,316 @@
+---
+title: "Regulatory Incumbents"
+author: "Nikhil Kalathil"
+date: "2022-11-09"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(lubridate)
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document takes webscraped NIOSH approvals and FDA 510K approvals to create a single list of companies with regulatory approval to count as incumbents. Alternative measures of incumbency might be to use the [FDA Establishment Registration and Device Listing](https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfrl/textsearch.cfm) to identify any company that has a facility registered with the FDA. However, the advantage of using prior medicla mask and respirator approvals is in the tightness of its scope about what defines an incumbent. 
+
+
+```{r}
+
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/FDA/"
+
+```
+
+```{r}
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+```
+
+
+## Identify List of Companies
+
+We begin by identifying our list of companies with 1) surgical mask approvals, and 2) respirator approvals). We are interested in organizing our data around company name, DUNS number (when available) and listed address, obtaining the first approval dates, last approval dates, as well as the total number of approvals per company name/location pairing. 
+
+```{r}
+fda_apprs <- readRDS(box_here("fda_formatch.RDS")) %>% 
+  filter(product %in% c("Surgical Face Mask", "Surgical Respirator")) %>% 
+  mutate(ddate = mdy(DECISIONDATE))
+```
+
+```{r}
+us_fda <- fda_apprs %>% 
+  filter(COUNTRY_CODE == "US") %>% 
+  mutate(usa_address = paste(STREET1, CITY, STATE, ZIP, sep = ", ")) %>% 
+  select(company = APPLICANT, product, usa_address) %>% 
+  distinct()
+```
+
+```{r}
+non_us_fda <- fda_apprs %>% 
+  filter(COUNTRY_CODE != "US") %>% 
+  mutate(non_us_address = paste(STREET1, STREET2, CITY, COUNTRY_CODE, sep = ", ")) %>% 
+  select(company = APPLICANT, product, non_us_address) %>% 
+  distinct()
+```
+
+```{r}
+fda_address <- bind_rows(non_us_fda, us_fda)
+```
+
+```{r}
+fda_address %>% write_csv(box_here("fda_address.csv"))
+```
+
+## NIOSH DATA
+
+```{r}
+niosh_apprs <- readRDS(box_here("niosh_clean.RDS"))
+```
+
+
+### NIOSH Addresses and Private Labels
+
+Because of the way that the NIOSH data is structured, we can use Approval URL's to identify company addresses. We are also interested in differentiating between N95 respirator approvals and Surgical N95 respirator approvals. 
+
+```{r}
+niosh_apprs <- niosh_apprs %>% 
+  filter(specific_product %in% c("N95 Respirator", "Surgical N95 Respirator"))
+```
+
+From here, we obtain a list of manufacturers for each approval number.  
+
+
+```{r}
+library(rvest)
+library(xml2)
+```
+
+
+```{r}
+
+base_url <- "https://wwwn.cdc.gov/NIOSH-CEL/ApprovalDetails?schedule=84A&approvalNum="
+
+make_url <- function(x) {
+  URLencode(paste(base_url, x, sep = ""))
+}
+```
+
+```{r}
+get_manf <- function(url) { 
+  table <- tryCatch(read_html(url) %>% 
+                     html_table(), error = function(e){NA})
+  
+  if(is.na(table[1])){
+     return(NA)
+  }
+  
+  if(length(table) == 2){
+    return(NA)
+  }
+  
+  else {
+    x1 <- table[3] 
+    x <- x1[[1]] %>% 
+      filter(X1 == "Manufacturer") %>% 
+      select(X2) 
+  return(x[1,])
+  }
+ }
+```
+
+
+
+```{r}
+niosh_appr_date <- niosh_apprs %>% 
+  mutate(manf_url = map(apprv_url, get_manf))
+
+
+```
+
+```{r}
+manf_list <- unlist(niosh_appr_date$manf_url)
+```
+
+
+```{r}
+niosh_appr_date$manf <- manf_list
+```
+
+With the way that niosh approvals work, approval details list manufacturers, along with private label companies that are approved to distribute and/or manufacturer the approved product. NIOSH has information for manufacturers, and the number of approved private label companies per number varies, with most products having a very few private labels, and some having a large number. 
+
+
+```{r}
+niosh_man <- niosh_appr_date %>% 
+  ungroup() %>% 
+  select(company, manf) %>% 
+  distinct()
+```
+
+
+```{r, eval = FALSE}
+niosh_appr_date %>% 
+  ungroup() %>% 
+  select(manf, appr_date, companies) %>% 
+  distinct() %>%  
+  ggplot() + 
+  geom_point(aes(mdy(appr_date), companies))
+```
+
+```{r, eval = FALSE}
+niosh_man %>% 
+  group_by(manf) %>% 
+  count() %>% 
+  ggplot() + 
+  geom_col(aes(reorder(manf, -n), n))
+```
+
+
+Because of the information that NIOSH provides, we focus on unique manufacturers, and count how many private labels they have per approval number. We also save private label data to search in both the FDA establishment registration & device database, as well as on OpenCorporates. 
+
+We start with identifying unique manufacturers and getting the address information that NIOSH has for these manufacturers. NOTE: due to discontinuations, not all approvals in our NIOSH dataset (dated 07/12/2021) are currently active, and thus will not necessarily be listed on the NIOSH website. 
+
+```{r}
+niosh_add <- niosh_appr_date %>% 
+  filter(!is.na(manf))
+```
+
+We then define a function that will take the approval url and output the manufacturer address. 
+
+```{r}
+get_manf_info <- function(url) {
+  
+  url_prefix <- "https://wwwn.cdc.gov"
+  
+  x <- read_html(url)
+  x_nodes <- x %>% html_nodes("table")
+  
+  results <- x_nodes[[3]] %>% html_nodes(xpath = "//td/a") %>% html_attr("href")
+  
+  result_url <- paste0(url_prefix, results)
+  
+  return(result_url)
+  
+}
+```
+
+
+```{r}
+niosh_add <- niosh_add %>% 
+  mutate(manf_info_url = map(apprv_url, get_manf_info))
+```
+
+```{r}
+niosh_add_simple <- niosh_add %>% 
+  mutate(manf_info_simp = gsub("&schedule=84.*", "", manf_info_url))
+```
+
+
+```{r}
+test_list <- niosh_add_simple %>% 
+  ungroup() %>% 
+  select(manf_info_simp, manf) %>% 
+  distinct()
+```
+
+
+We now define a function to loop over the manufacturer details urls and return the addresses. 
+
+```{r}
+get_man_det <- function(url) {
+  
+  store <- read_html(url) %>% 
+    html_nodes("body") %>% 
+    html_nodes("#contentArea") %>% 
+    html_nodes("div")
+  
+  manf_details <- store %>% html_text()
+  
+  df <- as.data.frame(manf_details) %>% 
+    filter(str_detect(manf_details, "Email", negate = TRUE), 
+           str_detect(manf_details, "Telephone", negate = TRUE), 
+           str_detect(manf_details, "Fax", negate = TRUE))
+  return(df)
+}
+```
+
+```{r}
+
+manf_details <- c("")
+manf_name <- c("")
+
+manf_info <- data.frame(manf_details,
+                        manf_name)
+```
+
+
+```{r}
+for(i in 1:nrow(test_list)) {
+  
+  manf_store <- test_list$manf[i]
+  
+  manf_info_i <- get_man_det(unlist(test_list$manf_info_simp[i])) %>% 
+    mutate(manf_name = manf_store)
+  
+  manf_info <- bind_rows(manf_info, manf_info_i)
+}
+```
+
+
+```{r}
+manf_addresses <- manf_info %>% 
+  filter(str_length(str_trim(manf_details)) > 0) %>% 
+  group_by(manf_name) %>% 
+  mutate(tal = seq(n()), 
+         tal_mod = tal %% 3,
+    usa_address = case_when(
+    str_detect(manf_details, "USA") ~ paste(lag(manf_details), manf_details, sep = ", "))) %>% 
+  mutate(non_us_address = case_when(
+    tal_mod == 1 & is.na(lead(usa_address)) ~ paste(manf_details, lead(manf_details), lead(manf_details, n = 2), sep = ", ")))
+```
+
+```{r}
+us_addresses <- manf_addresses %>% 
+  select(manf_name, usa_address) %>% 
+  distinct() %>%
+  filter(!is.na(usa_address))
+```
+
+```{r}
+non_us_addresses <- manf_addresses %>% 
+  select(manf_name, non_us_address) %>% 
+  filter(str_detect(non_us_address, "USA", negate = TRUE)) %>% 
+  distinct() %>%
+  filter(!is.na(non_us_address)) 
+```
+
+```{r}
+manf_all_addresses <- full_join(us_addresses, non_us_addresses)
+```
+
+The result of this process is a data frame with each manufacturer name, their US address, and their Non-US address. Note: This data requires further cleaning, with duplicate entries, as well as missing addresses. 
+
+```{r}
+manf_addresses %>% write_csv(box_here("niosh_manf_add_dirty.csv")) 
+```
+
+
+```{r}
+niosh_manf_all <- niosh_man %>% 
+  mutate(manf = case_when(
+    is.na(manf) ~ company, 
+    TRUE ~ manf
+  )) %>% 
+  select(manf) %>% 
+  unique()
+```
+
+```{r}
+niosh_manf <- niosh_man %>% 
+  select(manf) %>% 
+  unique()
+```
+

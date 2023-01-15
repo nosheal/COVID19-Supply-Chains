@@ -928,7 +928,7 @@ sample_address <- matched_sample %>%
 
 
 ```{r, echo = FALSE, Include = FALSE}
-api_key <- c("YOUR_KEY")
+api_key <- c("AIzaSyA1pwzK3BaX7_um-_TUrS7aGfCHQvp68b8")
 ```
 
 We define our function, which will take an address as an input and output a latitude and longitude result. 
