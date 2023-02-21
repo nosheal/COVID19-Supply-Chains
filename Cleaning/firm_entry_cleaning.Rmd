@@ -1,0 +1,729 @@
+---
+title: "Firm Entry Categorization"
+author: "Nikhil Kalathil"
+date: "2023-01-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This document takes the cleaned, manual validation of the full sample of firms that we are working with, pairs it with our previous data, and defines firms with their incumbent, diversifying, or de novo entry status. 
+
+
+```{r, include == FALSE }
+library(tidyverse)
+library(tidytext)
+library(RColorBrewer)
+library(ggthemes)
+library(here)
+library(ggrepel)
+library(lubridate)
+library(ggnewscale)
+library(readxl)
+library(patchwork)
+#library(htmltools)
+#library(htmlwidgets)
+#library(RJSONIO)
+```
+
+
+```{r}
+
+box_dir <- "C:/Users/Nikhil Kalathil/Box/COVID 19 Master Folder/Data/Masks/"
+
+```
+
+```{r}
+box_here <- function(file) {
+  paste(box_dir, file, sep = "")
+}
+```
+
+```{r}
+firm_size_fn <- function(data){
+  data %>% 
+    mutate(firm_size = case_when(
+      sales_dbh < 1000000 ~ "Under $1 Mil", 
+      sales_dbh >= 1000000 & sales_dbh < 10000000 ~ "$1M-$10M", 
+      sales_dbh >= 10000000 & sales_dbh < 50000000 ~ "$10M-$50M", 
+      sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ "$50M-$1B", 
+      sales_dbh >= 1000000000 ~ "$1B + "
+    ), 
+    size_pos = case_when(
+      sales_dbh < 1000000 ~ 5, 
+      sales_dbh >= 1000000 & sales_dbh < 10000000 ~ 4, 
+      sales_dbh >= 10000000 & sales_dbh < 50000000 ~ 3, 
+      sales_dbh >= 50000000 & sales_dbh < 1000000000 ~ 2, 
+      sales_dbh >= 1000000000 ~ 1
+    ))
+}
+```
+
+# Import Data
+
+## Import Previous Data
+
+```{r}
+validated_sample <- readRDS(box_here("matched_sample.RDS")) %>% 
+  firm_size_fn()
+```
+
+We note that some companies have two different names in the dataset and require manual cleaning. 
+
+```{r}
+kim_clark_mod <- validated_sample %>% 
+  filter(str_detect(company, "Kimberly-Clark Pro")) %>% 
+  select(where(function(x) any(!is.na(x)))) %>% 
+  select(-c(niosh_counter, fda_counter, contract_counter, comp_match)) %>% 
+  mutate(company = "Kimberly-Clark Corporation")
+
+kim_clark_mod2 <- validated_sample %>% 
+  filter(str_detect(company, "Kimberly-Clark Corporation")) %>% 
+  select(where(function(x) any(!is.na(x)))) %>% 
+  mutate(company = "Kimberly-Clark Corporation") 
+
+kim_clark <- left_join(kim_clark_mod2, kim_clark_mod)
+
+validated_sample_clean <- validated_sample %>% 
+  filter(str_detect(company, "Kimberly-Clark", negate = TRUE)) %>% 
+  bind_rows(kim_clark)
+  
+```
+
+```{r}
+rip_clear_mod <- validated_sample %>% 
+  filter(str_detect(company, "Ripclear|Rip Clear")) %>% 
+  mutate(company = "Ripclear, LLC") %>% 
+  group_by(company) %>% 
+  mutate(min_date = min(min_date), 
+         max_date = max(max_date), 
+         min_aff = min(min_aff))
+
+validated_sample <- validated_sample %>% 
+  filter(str_detect(company, "Ripclear|Rip Clear", negate = TRUE)) %>%
+  bind_rows(rip_clear_mod[1,])
+```
+
+
+To create some preliminary results, we will focus on the sample of firms that have confirmed locations, or are part of another database. 
+
+```{r}
+first_sample <- validated_sample_clean %>% 
+  filter(dom_useful_num == 1 | !is.na(DUNS)) 
+```
+
+
+## Import Manually Verified Data
+
+```{r}
+sample_duns <- read_xlsx(box_here("updated_data/confirmed_sample.xlsx"), sheet = "ingest")
+```
+
+```{r}
+full_sample_duns <- read_xlsx(box_here("updated_data/Updated_other_data.xlsx"), sheet = "ingest")
+```
+
+
+When we do our final merge, in our sample, we want to only be getting the company name, address, DUNS, sales information, corporate network, and date founded. From our original data, we will rename sales and corporate family data to indicate they are from 2022. 
+
+```{r}
+first_sample_merge <- first_sample %>% 
+  rename(original_company_name = company, DUNS_22 = DUNS, sales_dbh_22 = sales_dbh, corporate_family_dbh_22 = corporate_family_dbh, address_22 = address)
+```
+
+
+```{r}
+sample1 <- sample_duns %>% 
+  select(original_company_name, company, address, DUNS, sales_dbh, corporate_family_dbh, `date founded`) %>% 
+  inner_join(first_sample_merge, .)
+
+sample2 <-sample_duns %>% 
+  select(original_company_name, company, address, DUNS, sales_dbh, corporate_family_dbh, `date founded`) %>% 
+  anti_join(first_sample_merge, .)
+
+sample_2.merge <- full_sample_duns %>% 
+  select(original_company_name, company, man_location = location, address, DUNS, sales_dbh, corporate_family_dbh, `date founded`= Year, oc_date =`API incorporation date`) %>%
+  left_join(sample2, . )
+
+sample <- bind_rows(sample1, sample_2.merge)
+```
+```{r}
+manf_sample <- sample# %>% 
+  #filter(dom_useful_num != 0)
+```
+ 
+
+## Merging Tests
+
+```{r}
+first_sample_test <- first_sample %>% 
+  #select(original_company_name = company, DUNS, sales_dbh, dom_useful_num)
+  rename(original_company_name = company)
+```
+
+```{r}
+first_sample_test %>% 
+  left_join(sample_duns, by = c('original_company_name')) %>%
+  view()
+```
+
+We notice that not all companies are in this set. As such, we must use our full sample set to complete the merge. 
+
+```{r}
+first_sample_test %>% 
+  anti_join(sample_duns, by = c('original_company_name')) %>% 
+  anti_join(full_sample_duns, by = c('original_company_name')) %>% 
+  view()
+```
+
+When we do so, we see that we clearly capture details for all of the firms that we are interested in. 
+
+# Market Incumbents
+
+We now must identify market incumbents. To build on the specification alluded to above, we specifically define incumbents as companies that had an FDA or NIOSH approval for surgical masks and/or respirators as of 2009. Some companies have older FDA approvals, but we are also aware of at least one company that had a prior approval, but wasn't manufacturing anything untl the pandemic. Due to regulatory rules, he had to re-apply to certify the product with a new manufacturer. 
+
+## FDA Incumbents
+
+We bring in our list of FDA approvals. 
+
+```{r}
+fda_apprs <- readRDS(box_here("FDA/fda_formatch.RDS")) %>% 
+  filter(product %in% c("Surgical Face Mask", "Surgical Respirator")) %>% 
+  mutate(ddate = mdy(DECISIONDATE))
+```
+
+```{r}
+remove <- c("Limited" ,"Ltd", "LTD", "Incorporated", "Company",  "Corporation", "Corp", "Co", "Inc",  "[[:punct:]]", "LLC", "INC", "COMPANY", "CORP")
+```
+
+```{r}
+
+
+#mutate(comp_match = tolower(str_trim(str_remove_all(company, paste(remove, collapse = "|"))))
+
+fda_records <- fda_apprs %>%
+  mutate(APPLICANT = case_when(
+    str_detect(APPLICANT, "3M") ~ "3M", 
+    str_detect(APPLICANT, "CARDINAL") ~ "Cardinal Health 200",
+    str_detect(APPLICANT, "NEXERA") ~ "Nexera Medical",
+    TRUE ~ APPLICANT
+  )) %>% 
+  mutate(comp_match = tolower(str_trim(str_remove_all(APPLICANT, paste(remove, collapse = "|"))))) %>% 
+  mutate(APPLICANT = str_trim(str_remove_all(APPLICANT, paste(remove, collapse = "|")))) %>% 
+  group_by(APPLICANT) %>% 
+  mutate(comp_covid_appr = case_when(
+    year(ddate) >= 2020 ~ 1
+  )) %>% 
+  filter(COUNTRY_CODE == "US") %>%
+  group_by(APPLICANT) %>% 
+  mutate(total_apprs = n(), 
+         min_appr = min(ddate), 
+         max_appr = max(ddate),
+         tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  select(-c(tal)) %>% 
+  select(APPLICANT, total_apprs, min_appr, max_appr, comp_match)
+```
+
+We now bring in our manually updated data. 
+
+```{r}
+fda_check <- read_xlsx(box_here("updated_data/fda_address.xlsx"), sheet = "ingest") 
+```
+
+
+```{r}
+fda_ref <- fda_check %>% 
+  mutate(company = case_when(
+    str_detect(company, "3M") ~ "3M",
+    TRUE ~ company
+  )) %>% 
+  filter(str_detect(usa_address, "NA", negate = TRUE)) %>%
+  mutate(comp_match = tolower(str_trim(str_remove_all(company, paste(remove, collapse = "|"))))) %>% 
+  select( -c(product)) %>% 
+  left_join(fda_records, .) %>% 
+  mutate(fda_incumbent = case_when(
+    year(max_appr) < 2020 ~ 1)) %>% 
+  mutate(usa_address = case_when(
+    !is.na(`Updated address`) ~ `Updated address`, 
+    TRUE ~ usa_address
+  )) %>% 
+  select(-c(non_us_address, `Updated address`))
+```
+
+Now that we have a reference dataframe with the relevant FDA data, we focus only on companies that are incumbents, and merge with our sample. 
+
+```{r}
+fda_incumbent_ref <- fda_ref %>% 
+  filter(fda_incumbent == 1) %>% 
+  ungroup() %>% 
+  rename(fda_duns = DUNS) %>% 
+  mutate(comp_match = case_when(
+    str_detect(comp_match, "halyard") ~ "om halyard", 
+    TRUE ~ comp_match)) %>%  #manual fix b/c of acquisition
+  select(-c(APPLICANT, company))
+```
+
+
+
+```{r}
+manf_sample_fda <- manf_sample %>% 
+    mutate(company = case_when(
+    str_detect(company, "Alpha Pro") ~ "AlphaProTech", 
+    TRUE ~ company
+  )) %>% 
+  mutate(comp_match = tolower(str_trim(str_remove_all(company, paste(remove, collapse = "|")))), 
+         DUNS = as.numeric(DUNS)) %>% 
+  left_join(fda_incumbent_ref) 
+  #left_join(fda_incumbent_ref, by = DUNS)
+```
+Thus, we have a counter to mark when companies are FDA incumbents. 
+
+## NIOSH Incumbents
+
+We now bring in our NIOSH approval database and simplify it to list the total number of approvals, the minimum date of approval, and the maximum date of approval per company. We note that we will drop any company that has an approval through a private label deal. 
+
+```{r}
+niosh_apprs <- readRDS(box_here("FDA/niosh_clean.RDS"))
+```
+
+```{r}
+niosh_records <- niosh_apprs %>% 
+  mutate(company = case_when(
+    contact_info == "800-858-1737" ~ "Draeger Inc.", 
+    TRUE ~ company
+  )) %>% 
+  filter(is.na(private_company_prnt), str_detect(appr_date, "NA", negate = TRUE)) %>% 
+  group_by(company) %>% 
+  mutate(min_appr_niosh = min(mdy(appr_date)), 
+         max_appr_niosh = max(mdy(appr_date)), 
+         tot_appr_niosh = n(), 
+         tal = seq(n())) %>% 
+  filter(tal == 1) %>% 
+  select(company, min_appr_niosh, max_appr_niosh, tot_appr_niosh) %>% 
+  mutate(niosh_incumbent = case_when(
+    year(min_appr_niosh) < 2020 ~ 1
+  )) %>% 
+  mutate(company = case_when(
+    str_detect(company, "Dentec") ~ "Dentec Safety Specialists",
+    TRUE ~ company)) %>% 
+  mutate(comp_match = tolower(str_trim(str_remove_all(company, paste(remove, collapse = "|"))))) 
+```
+
+
+
+```{r}
+niosh_check <- read_xlsx(box_here("updated_data/niosh_manf_add_dirty.xlsx"), sheet = "ingest") 
+```
+
+
+```{r}
+niosh_incumbents <- niosh_check %>% 
+  mutate(manf_name = case_when(
+    str_detect(manf_name, "3M") ~ "3M",
+    TRUE ~ manf_name
+  )) %>% 
+  filter(!is.na(Address)) %>%
+  mutate(comp_match = tolower(str_trim(str_remove_all(manf_name, paste(remove, collapse = "|"))))) %>% 
+  select(manf_name, Address, DUNS, comp_match) %>% 
+  left_join(niosh_records %>% filter(year(min_appr_niosh) < 2020)) %>% 
+  filter(niosh_incumbent == 1) %>% 
+  mutate(comp_match = case_when(
+    str_detect(comp_match, "moldex") ~ "moldex", 
+    str_detect(comp_match, "honeywell") ~ "honeywell safety products",
+    TRUE ~ comp_match
+  ))
+```
+
+```{r}
+manf_incumbent_check <- niosh_incumbents %>% 
+  select(comp_match, niosh_incumbent, min_appr_niosh, max_appr_niosh, tot_appr_niosh, niosh_address = Address, niosh_duns = DUNS) %>% 
+  left_join(manf_sample_fda, .)
+```
+
+# Firm Entry Categorization
+
+Our set of companies entered into or expanded US manufacturing of surgical masks, respirators, and/or non-woven meltblown fabrics for PPE. Some of these obtain regulatory approval during the pandemic, and some have previous regulatory approvals as well. We can then define firms as de-novo if formed in 2020, diversifying if prior to 2020, and incumbents if they have previous regulatory approvals for surgical masks and/or respirators with the FDA and/or NIOSH. 
+
+Note that in the current sample, there are some entitities for which we established that there is no US manufacturing. In addition, despite an FDA approval in 2021, Defender Safety was confirmed as not manufacturing its products in the US in a phone call on 1/25/2023.
+
+For our final analysis, we will want to make sure to remove these entities. 
+
+```{r}
+manf_sample_final <- manf_incumbent_check #%>% 
+  #filter(dom_useful_num != 0 | is.na(dom_useful_num))
+```
+
+
+We note that we don't have complete information for the full set of firms to draw on, and will work to expand the sample once more. At the moment, we have data about: 
+
+```{r}
+manf_sample_final %>% 
+  filter(!is.na(`date founded`) | !is.na(oc_date), dom_useful_num != 0 ) %>%
+  group_by(specific_product) %>% 
+  count()
+```
+
+```{r}
+manf_sample_final %>% 
+  filter(!is.na(`date founded`) | !is.na(oc_date), dom_useful_num != 0) %>%
+  group_by(specific_product, fda_counter, niosh_counter) %>% 
+  count()
+
+```
+
+
+```{r}
+manf_sample_final %>% 
+  filter(specific_product != "No Latex Elastic") %>% 
+  filter(!is.na(`date founded`) | !is.na(oc_date), dom_useful_num != 0) %>%
+  mutate(`date founded` = case_when(
+    is.na(`date founded`) & !is.na(oc_date) ~ oc_date, 
+    TRUE ~ `date founded`)) %>% 
+  mutate(corp_history = case_when(
+    `date founded` < 2020 ~ "Diversifying", 
+    `date founded` >= 2020 ~ "De_Novo")) %>% 
+  mutate(corp_history = case_when(
+    fda_incumbent == 1 | niosh_incumbent == 1 ~ "Incumbent", 
+    TRUE ~ corp_history)) %>% 
+  group_by(specific_product, corp_history) %>% 
+  count() %>% 
+  pivot_wider(names_from = corp_history, values_from = c(n)) %>% 
+  mutate(percent_new =  round(De_Novo / (De_Novo + Diversifying + Incumbent), 2), 
+         total = De_Novo + Diversifying + Incumbent)
+```
+
+# Geocoding
+
+## Confirmed Manufacturers 
+
+We now take our list of confirmed firms, and geocode them. 
+
+```{r, echo = FALSE, Include = FALSE}
+api_key <- c("")
+```
+
+We define our function, which will take an address as an input and output a latitude and longitude result. 
+
+```{r}
+geocodeAddress <- function(address) {
+  require(RJSONIO)
+  url <- "https://maps.googleapis.com/maps/api/geocode/json?address="
+  url <- URLencode(paste(url, address, sep = ""))
+  url <- URLencode(paste(url, "&key=", api_key, sep = ""))
+  x <- fromJSON(url, simplify = FALSE)
+  print(x$status)
+  if (x$status == "OK") {
+    out <- c(x$results[[1]]$geometry$location$lng,
+             x$results[[1]]$geometry$location$lat,
+             x$results[[1]]$formatted_address)
+  } else {
+    out <- NA
+  }
+  Sys.sleep(0.2)  # API only allows 5 requests per second
+  out
+}
+```
+
+
+
+
+```{r}
+for(i in 1:nrow(manf_sample_final))
+{
+  result <- geocodeAddress(manf_sample_final$address[i])
+  manf_sample_final$long[i] <- as.numeric(result[1])
+  manf_sample_final$lat[i] <- as.numeric(result[2])
+  manf_sample_final$form_address[i] <- as.character(result[3])
+
+}
+```
+
+
+```{r}
+add_fix <- manf_sample_final %>% 
+  filter(original_company_name == "Phoenix Quality MFG, LLC") %>% 
+  mutate(address == "16064 Beaver Pike, Jackson, Ohio, 45640-9659 United States")
+```
+
+```{r, eval = FALSE}
+
+
+  url <- "https://maps.googleapis.com/maps/api/geocode/json?address="
+  url <- URLencode(paste(url, "16064 Beaver Pike, Jackson, Ohio, 45640-9659 United States", sep = ""))
+  url <- URLencode(paste(url, "&key=", api_key, sep = ""))
+  
+  x <- fromJSON(url, simplify = FALSE)
+ 
+```
+
+```{r}
+out <- c(x$results[[1]]$geometry$location$lng,
+             x$results[[1]]$geometry$location$lat,
+             x$results[[1]]$formatted_address)
+
+  add_fix$lat[1] <- as.numeric(out[1])
+  add_fix$long[1] <- as.numeric(out[2])
+  add_fix$form_address <- as.character(out[3])
+```
+
+
+```{r}
+manf_geocoded <- manf_sample_final %>% 
+  filter(original_company_name != "Phoenix Quality MFG, LLC") %>%
+  bind_rows(add_fix)
+```
+```{r}
+add_fix2 <- manf_geocoded %>% 
+  filter(original_company_name == "UNISOURCES GROUP") %>% 
+  mutate(address == "7460 NW 52nd St, Miami, FL 33166")
+```
+
+```{r}
+url <- "https://maps.googleapis.com/maps/api/geocode/json?address="
+url <- URLencode(paste(url, "7460 NW 52nd St, Miami, FL 33166", sep = ""))
+url <- URLencode(paste(url, "&key=", api_key, sep = ""))
+  
+x <- fromJSON(url, simplify = FALSE)
+
+```
+
+
+```{r}
+out <- c(x$results[[1]]$geometry$location$lng,
+             x$results[[1]]$geometry$location$lat,
+             x$results[[1]]$formatted_address)
+
+  add_fix2$lat[1] <- as.numeric(out[1])
+  add_fix2$long[1] <- as.numeric(out[2])
+  add_fix2$form_address <- as.character(out[3])
+```
+
+```{r}
+manf_geocoded <- manf_geocoded %>% 
+  filter(original_company_name != "UNISOURCES GROUP") %>%
+  bind_rows(add_fix2) %>% 
+  filter(!is.na(form_address))
+```
+
+### Getting State Information
+
+```{r}
+geocodeState <- function(long, lat) {
+  require(RJSONIO)
+  parameters <- str_c("&key=", api_key)
+  apiRequests <- iconv(str_c("https://maps.googleapis.com/maps/api/geocode/json?latlng=", lat, ",", long, parameters), "", "UTF-8")
+  x <- fromJSON(apiRequests, simplify = FALSE)
+  print(x$status)
+  if (x$status == "OK" & !is.null(x$results[[1]]$address_components)) {
+    
+    for(i in 1:length(x$results[[1]]$address_components)) {
+      check <- x$results[[1]]$address_components[[i]]$type[[1]]
+      
+      if (check == "administrative_area_level_1") {
+        print(check)
+        
+        out <- c(x$results[[1]]$address_components[[i]]$long_name,
+             x$results[[1]]$address_components[[i]]$short_name)
+      }
+    }
+  } else {
+    out <- NA
+  }
+  Sys.sleep(0.2)  # API only allows 5 requests per second
+  out
+}
+```
+
+
+
+```{r}
+for(i in 1:nrow(manf_geocoded %>% filter(!is.na(form_address))))
+{
+  result <- geocodeState(manf_geocoded$long[i], manf_geocoded$lat[i])
+  manf_geocoded$state_name[i] <- as.character(result[1])
+  manf_geocoded$state_abbr[i] <- as.character(result[2])
+
+}
+```
+
+```{r}
+manf_geocoded %>% 
+  saveRDS(box_here("manf_geocoded.RDS"))
+```
+
+## Rest of Sample 
+
+We now perform the same process for the rest of our sample. 
+
+```{r}
+canada <- c(", BC", ", ON", ", NL", ", AB", ", MB", ", QC")
+```
+
+
+```{r}
+non_manf <- full_sample_duns %>% 
+  select(original_company_name, man_location = location, company, address, DUNS, sales_dbh, corporate_family_dbh, `date founded`= Year, oc_date =`API incorporation date`, specific_product) %>% 
+  left_join(validated_sample %>% rename(DUNS_22 = DUNS, sales_dbh_22 = sales_dbh, corporate_family_dbh_22 = corporate_family_dbh, address_22 = address)) %>% 
+  filter(str_detect(man_location, paste(canada, collapse = "|"), negate = TRUE)) %>% 
+  anti_join(manf_geocoded %>% select(original_company_name)) 
+```
+
+```{r, results = FALSE}
+for(i in 1:nrow(non_manf))
+{
+  result <- geocodeAddress(non_manf$address[i])
+  non_manf$long[i] <- as.numeric(result[1])
+  non_manf$lat[i] <- as.numeric(result[2])
+  non_manf$form_address[i] <- as.character(result[3])
+
+}
+```
+
+
+
+```{r}
+for(i in 1:nrow(non_manf %>% filter(!is.na(form_address))))
+{
+  result <- geocodeState(non_manf$long[i], non_manf$lat[i])
+  non_manf$state_name[i] <- as.character(result[1])
+  non_manf$state_abbr[i] <- as.character(result[2])
+
+}
+```
+
+```{r}
+non_manf_geocoded <- non_manf
+```
+
+
+```{r}
+non_manf_geocoded %>% 
+  saveRDS(box_here("non_manf_geocoded.RDS"))
+```
+
+
+
+```{r}
+manf_geocoded <- manf_geocoded %>% 
+  firm_size_fn() %>% 
+  mutate(dom_useful_num = case_when(
+    is.na(dom_useful_num) | dom_useful_num != 0 ~ 1, 
+    TRUE ~ dom_useful_num
+  ))
+
+non_manf_geocoded <- non_manf_geocoded %>% 
+  firm_size_fn() %>% 
+  mutate(dom_useful_num = 0,
+         DUNS = as.numeric(DUNS))
+
+final_sample <- bind_rows(manf_geocoded, non_manf_geocoded)
+```
+
+
+```{r}
+final_sample <- final_sample %>% 
+  select(original_company_name, specific_product, date_founded, `date founded`, location, address, DUNS, corporate_family_dbh, sales_dbh, thomasnet, atsite_emp_dbh, total_contracts, total_dollars, first_contract, niosh, eua, fda_510, niosh_counter, fda_counter, dom_useful_num, fda_incumbent, niosh_incumbent, form_address, long, lat, state_abbr, state_name, useful, desc)
+```
+
+We note that three non-woven companies end up manufacturing end products, and obtaining approval for them. As such, we modify the specific product that they manufacturer. 
+
+```{r}
+final_sample <- final_sample %>% 
+  mutate(specific_product = case_when(
+    specific_product == "Non-Woven Fabric" & niosh_counter == TRUE ~ "Respirators Only", 
+    specific_product == "Non-Woven Fabric" & fda_counter == TRUE ~ "Face Masks Only", 
+    TRUE ~ specific_product
+  ))
+```
+
+
+```{r}
+final_sample %>% 
+  saveRDS(box_here("final_sample.RDS"))
+```
+
+
+# Hypothesis for Firm Entry
+
+## Firm Discrete Choice
+
+Our first model considers the probability that a firm that claims to be participating in a given market at time (t) actually establishes a US domestic manufacturing facility. Our hypothesis for the predictors of firm entry are mostly derived from the literature, where we believe that firms with relevant experience (in medical textiles, non-wovens, with an ISO certified facility, prior medical device experience, prior respirator/mask approval), that have access to resources (as represented by annual sales), that are part of multi-business units (as a proxy for access to additional resources and capabilities, and especially when manufacturing and distribution experience exists across a corporate network), will be more likely to either enter as de novo firms, or diversify into product markets experiencing shortages. 
+
+```{r}
+int_prod <- c("No Latex Elastic", "Non-Woven Fabric")
+```
+
+
+```{r}
+final_sample %>% 
+  group_by(dom_useful_num, specific_product) %>% 
+  filter(!specific_product %in% int_prod) %>% 
+  count() %>% 
+  mutate(dom_useful_num = case_when(
+    dom_useful_num == 0 ~ "Non US Manufacturer", 
+    dom_useful_num == 1 ~ "US Manufacturer"
+  )) %>% 
+  pivot_wider(names_from = c(dom_useful_num), values_from = c(n)) 
+```
+
+
+To test this hypothesis, we have a sample of 174 (not including non-woven manufacturers) confirmed manufactures, out of a total of 369 manufacturers that listed as supplying a standard FDA-grade surgical mask/respirator, representing a roughly 47% success rate. 
+
+Restricting our sample to only firms that list on Thomasnet, our sample shrinks somewhat, to a total of 116 confirmed manufacturers, out of a total of 298 firms, representing a roughly 39% success rate. 
+
+```{r}
+final_sample %>% 
+  group_by(dom_useful_num, specific_product) %>% 
+  filter(!specific_product %in% int_prod, thomasnet == 1) %>% 
+  count() %>% 
+  mutate(dom_useful_num = case_when(
+    dom_useful_num == 0 ~ "Non US Manufacturer", 
+    dom_useful_num == 1 ~ "US Manufacturer"
+  )) %>% 
+  pivot_wider(names_from = c(dom_useful_num), values_from = c(n)) 
+```
+
+
+This sample provides our first equation to estimate, where the outcome variable is (1,0) corresponding to Y/N to firm entry. Removing incumbents from this sample, reduces our sample size to 105/287, or a 37% success rate. We can estimate this model using a logit model, a hazard rate model, or a simple OLS model. 
+
+```{r}
+final_sample %>% 
+  filter(dom_useful_num == 1) %>% 
+  group_by(specific_product, fda_counter, niosh_counter) %>% 
+  filter(!specific_product %in% int_prod) %>% 
+  count()
+```
+
+```{r}
+final_sample %>%
+  filter(dom_useful_num == 1, !specific_product %in% int_prod) %>% 
+  mutate(corp_history = case_when(
+    `date founded` < 2020 ~ "Diversifying", 
+    `date founded` >= 2020 ~ "De_Novo")) %>% 
+  mutate(corp_history = case_when(
+    fda_incumbent == 1 | niosh_incumbent == 1 ~ "Incumbent", 
+    TRUE ~ corp_history)) %>% 
+  group_by(specific_product, corp_history) %>% 
+  count() %>% 
+  pivot_wider(names_from = corp_history, values_from = c(n)) %>% 
+  mutate(percent_new =  round(De_Novo / (De_Novo + Diversifying + Incumbent), 2), 
+         total = De_Novo + Diversifying + Incumbent)
+```
+
+
+In addition to these firm-level characteristics, we believe that the firm level decision will be influenced by the availability of regional resources to support firm entry, representing the health of the regional manufacturing ecosystem it is a part of, as captured by county or state regional controls (number of total manufacturers, ratio of large to small manufacturers, ratio of business starts to stops). 
+
+Our total number of confirmed domestic manufacturers is divided across 36 states. 
+
+
+##### A Note
+
+There is a discrepancy in the size of the validated_sample file, and the manually checked full_sample_duns file. Removing companies located in Canada helps bridge this gap. The rest of the companies that are present in the validated_sample file but NOT the full_sample_duns file are confirmed manufacturers.
+
+
+Canada tags: 
+
+

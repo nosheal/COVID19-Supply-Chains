@@ -130,7 +130,7 @@ country_count <- all_reg %>%
 country_niosh <- country_count %>% 
   filter(year(ddate) > 2019, str_detect(reg_type, "NIOSH")) %>% 
   ggplot() + 
-  geom_col(aes(x = ddate, y = n, group = domestic, fill = domestic), position = position_dodge(width = 30, preserve = "total"), show.legend = FALSE) + 
+  geom_col(aes(x = ddate, y = n, group = domestic, fill = domestic), position = position_dodge2(width = 15, preserve = c("single"), padding = 0), show.legend = FALSE) + 
   scale_fill_manual(values = country_col) + 
   theme_minimal() + 
   scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2019-12-30","2021-05-15"))) +
@@ -146,7 +146,7 @@ country_niosh <- country_count %>%
 country_510k <- country_count %>% 
   filter(year(ddate) > 2019, str_detect(reg_type, "FDA 510k")) %>% 
   ggplot() + 
-  geom_col(aes(x = ddate, y = n, group = domestic, fill = domestic), position = position_dodge(width = 30, preserve = "total"), show.legend = FALSE) + 
+  geom_col(aes(x = ddate, y = n, group = domestic, fill = domestic), position = position_dodge2(width = 15, preserve = c("single"), padding = 0), show.legend = FALSE) + 
   scale_fill_manual(values = country_col) + 
   scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2019-12-30","2021-05-15"))) +
   theme_minimal() + 
@@ -162,7 +162,7 @@ country_510k <- country_count %>%
 country_eua <- country_count %>% 
   filter(year(ddate) > 2019, str_detect(reg_type, "FDA EUA")) %>% 
   ggplot() + 
-  geom_col(aes(x = ddate, y = n, group = domestic, fill = domestic), position = position_dodge(width = 30, preserve = "total"), show.legend = FALSE) + 
+  geom_col(aes(x = ddate, y = n, group = domestic, fill = domestic), position = position_dodge2(width = 15, preserve = c("single"), padding = 0), show.legend = FALSE) + 
   scale_fill_manual(values = country_col) + 
   scale_x_date(date_labels = "%b", breaks = "month", limits = as.Date(c("2019-12-30","2021-05-15"))) +
   theme_minimal() + 
@@ -322,7 +322,7 @@ niosh_graph1 <- size_count %>%
 size_niosh <- country_niosh + 
   new_scale_fill() + 
    geom_col(data = niosh_graph, aes(x = ddate + 7, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 15, show.legend = FALSE) + 
-  geom_col(data = niosh_graph1, aes(x = ddate, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 30, show.legend = FALSE) + 
+  geom_col(data = niosh_graph1, aes(x = ddate, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 15, show.legend = FALSE) + 
   scale_fill_manual(values = size_col, na.value = "White") + 
   labs(fill = "") + 
   scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2019-12-30","2021-06-01")))
@@ -357,7 +357,7 @@ graph_510k1 <- size_count %>%
 size_510k <- country_510k + 
   new_scale_fill() + 
    geom_col(data = graph_510k, aes(x = ddate + 7, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 15, show.legend = FALSE) + 
-  geom_col(data = graph_510k1, aes(x = ddate, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 30, show.legend = FALSE) + 
+  geom_col(data = graph_510k1, aes(x = ddate, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 15, show.legend = FALSE) + 
   scale_fill_manual(values = size_col, na.value = "White") + 
   scale_x_date(date_labels = "%b, %y", breaks = "month", limits = as.Date(c("2019-12-30","2021-06-01")))
 ```
@@ -391,7 +391,7 @@ eua_graph1 <- size_count %>%
 size_eua <- country_eua + 
   new_scale_fill() + 
    geom_col(data = eua_graph, aes(x = ddate + 7, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 15, show.legend = FALSE) + 
-  geom_col(data = eua_graph1, aes(x = ddate, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 30, show.legend = FALSE) + 
+  geom_col(data = eua_graph1, aes(x = ddate, y = n, group = firm_size, fill = reorder(firm_size, size_pos)), position = "stack", color = "Dark Grey", width = 15, show.legend = FALSE) + 
   scale_fill_manual(values = size_col, na.value = "White") + 
   scale_x_date(date_labels = "%b", breaks = "month", limits = as.Date(c("2019-12-30","2021-06-01")))
 ```

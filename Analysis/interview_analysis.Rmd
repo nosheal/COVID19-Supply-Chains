@@ -51,7 +51,7 @@ int_raw <- interviews_raw %>%
     ), 
    company = case_when(
      str_detect(company, "AmeriShield") ~ "Premium-PPE Amerishield",
-     str_detect(company, "Protective Health Gear") ~ "Firm X",
+     str_detect(company, "Protective Health Gear") ~ "Firm Alpha",
      str_detect(company, "Honeywell") ~ "Honeywell",
      TRUE ~ company), 
    stop_start = case_when(
